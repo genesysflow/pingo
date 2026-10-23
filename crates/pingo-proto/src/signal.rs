@@ -8,6 +8,7 @@
 //! 4. whenever the set of forwarded tracks changes, the SERVER sends `Offer` and the client replies `Answer`
 //!    (only one offer in flight per side; if both collide the client's offer wins and the server retries after)
 //! 5. `TrackPublished` / `TrackUnpublished` tell the client which participant and kind each `mid` belongs to
+//!
 //! ICE candidates are carried in the SDP (no trickle) to keep this simple.
 
 use serde::{Deserialize, Serialize};

@@ -8,3 +8,18 @@ publish.workspace = true
 
 [dependencies]
 pingo-proto = { workspace = true }
+async-trait = "0.1"
+axum = { workspace = true }
+clap = { version = "4", features = ["derive"] }
+if-addrs = "0.14"
+serde_json = { workspace = true }
+str0m = { version = "0.24", default-features = false, features = ["aws-lc-rs"] }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+uuid = { version = "1", features = ["v4"] }
+
+[dev-dependencies]
+futures-util = { version = "0.3", features = ["sink"] }
+tokio-tungstenite = "0.29"
