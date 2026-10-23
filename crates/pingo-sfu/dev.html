@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pingo SFU interop</title>
+<style>
+  :root { color-scheme: dark; font: 16px system-ui; background: #151821; color: #ecedf2; }
+  body { max-width: 900px; margin: 3rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.7rem; } label { display: block; margin: 1rem 0; }
+  input, textarea, button { font: inherit; padding: .6rem; border: 1px solid #555a70; border-radius: .4rem; background: #252936; color: inherit; }
+  textarea { display: block; width: 95%; height: 4rem; } button { cursor: pointer; margin: .3rem; }
+  button:disabled { opacity: .45; cursor: default; } video { max-width: 100%; max-height: 400px; }
+  pre { white-space: pre-wrap; max-height: 260px; overflow: auto; font-size: .8rem; color: #bbc3d8; }
+  #media { display: grid; grid-template-columns: repeat(auto-fit,minmax(260px,1fr)); gap: 1rem; }
+</style>
+<h1>Pingo SFU interop</h1>
+<p>Open two tabs with different user names. Join the same room to exchange microphone audio and reactions. Use headphones.</p>
+<label>Room <input id="room" value="demo"></label>
+<label>User <input id="user" value=""></label>
+<button id="mint">Get local dev token</button> <small>Requires the server's <code>--dev-token</code> flag.</small>
+<label>Media token <textarea id="token" spellcheck="false" autocomplete="off"></textarea></label>
+<button id="join">Join with microphone</button><button id="leave" disabled>Leave</button>
+<button id="share" disabled>Share screen</button><button id="react" disabled>Send 🎉</button>
+<p id="status" role="status">Disconnected</p>
+<div id="media"></div><pre id="log"></pre>
+<script type="module">
+const el = id => document.getElementById(id);
+el('user').value = `guest-${crypto.randomUUID().slice(0, 6)}`;
+let pc, ws, channel, participantId, microphone, screen, jobs = Promise.resolve();
+let declarations = [], elements = new Map();
+const log = message => { el('log').textContent += `${message}\n`; el('log').scrollTop = el('log').scrollHeight; };
+const enqueue = task => { jobs = jobs.then(task).catch(error => { log(error.message); el('status').textContent = error.message; }); };
+const send = message => ws.send(JSON.stringify(message));
+const buttonState = joined => { for (const id of ['leave', 'share', 'react']) el(id).disabled = !joined; el('join').disabled = joined; };
+async function gather() {
+  if (pc.iceGatheringState === 'complete') return;
+  await new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { pc.removeEventListener('icegatheringstatechange', check); reject(new Error('ICE gathering timed out')); }, 10000);
+    function check() { if (pc.iceGatheringState === 'complete') { clearTimeout(timer); pc.removeEventListener('icegatheringstatechange', check); resolve(); } }
+    pc.addEventListener('icegatheringstatechange', check);
+    check();
+  });
+}
+async function offer() {
+  await pc.setLocalDescription(await pc.createOffer()); await gather();
+  send({type:'offer', sdp:pc.localDescription.sdp});
+  send({type:'publishTracks', tracks:declarations.filter(x => !x.transceiver.stopped && x.transceiver.sender.track).map(x => ({mid:x.transceiver.mid,kind:x.kind}))});
+}
+function cleanup() {
+  ws?.close(); pc?.close(); microphone?.getTracks().forEach(t => t.stop()); screen?.getTracks().forEach(t => t.stop());
+  el('media').replaceChildren(); elements.clear(); declarations = []; buttonState(false); el('status').textContent = 'Disconnected';
+}
+el('mint').onclick = () => enqueue(async () => {
+  const query = new URLSearchParams({room:el('room').value, user:el('user').value});
+  const response = await fetch(`/dev-token?${query}`);
+  if (!response.ok) throw new Error('Dev token endpoint unavailable; paste a backend media token or enable --dev-token on localhost.');
+  el('token').value = (await response.json()).token;
+});
+el('join').onclick = () => enqueue(async () => {
+  if (!el('token').value.trim()) throw new Error('Get or paste a media token first.');
+  microphone = await navigator.mediaDevices.getUserMedia({audio:true, video:false});
+  pc = new RTCPeerConnection(); declarations = [];
+  declarations.push({transceiver:pc.addTransceiver(microphone.getAudioTracks()[0], {direction:'sendonly',streams:[microphone]}),kind:'audio'});
+  pc.ontrack = event => {
+    const media = document.createElement(event.track.kind === 'audio' ? 'audio' : 'video');
+    media.autoplay = true; media.controls = true; media.playsInline = true; media.srcObject = new MediaStream([event.track]);
+    elements.set(event.transceiver.mid, media); el('media').append(media); media.play().catch(() => log('Press play to allow remote audio.'));
+  };
+  pc.onconnectionstatechange = () => { el('status').textContent = `WebRTC: ${pc.connectionState}`; };
+  channel = pc.createDataChannel('pingo');
+  channel.onmessage = event => { const msg = JSON.parse(event.data); if(msg.type !== 'speaking') log(JSON.stringify(msg)); };
+  ws = new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/rtc`);
+  ws.onopen = () => send({type:'join',token:el('token').value.trim()});
+  ws.onclose = () => { pc?.close(); microphone?.getTracks().forEach(t => t.stop()); screen?.getTracks().forEach(t => t.stop()); buttonState(false); el('status').textContent = 'Signaling closed'; };
+  ws.onmessage = event => enqueue(async () => {
+    const message = JSON.parse(event.data);
+    if(message.type === 'joined') { participantId = message.participantId; log(`Joined as ${participantId}`); buttonState(true); await offer(); }
+    else if(message.type === 'answer') await pc.setRemoteDescription({type:'answer', sdp:message.sdp});
+    else if(message.type === 'offer') {
+      // The contract gives our own in-flight offer precedence; the SFU retries.
+      if(pc.signalingState !== 'stable') return;
+      await pc.setRemoteDescription({type:'offer',sdp:message.sdp});
+      await pc.setLocalDescription(await pc.createAnswer()); await gather(); send({type:'answer',sdp:pc.localDescription.sdp});
+    } else if(message.type === 'trackUnpublished') { elements.get(message.mid)?.remove(); elements.delete(message.mid); }
+    else log(JSON.stringify(message));
+  });
+});
+el('leave').onclick = cleanup;
+el('react').onclick = () => { if(channel?.readyState === 'open') channel.send(JSON.stringify({type:'reaction',participantId,emoji:'🎉'})); };
+el('share').onclick = () => enqueue(async () => {
+  if (screen?.getTracks().some(t => t.readyState === 'live')) return;
+  screen = await navigator.mediaDevices.getDisplayMedia({video:true,audio:false});
+  const track = screen.getVideoTracks()[0]; track.contentHint = 'detail';
+  const transceiver = pc.addTransceiver(track, {direction:'sendonly',streams:[screen]});
+  declarations.push({transceiver,kind:'screen'});
+  track.onended = () => enqueue(async () => { pc.removeTrack(transceiver.sender); await offer(); });
+  await offer();
+});
+setInterval(() => { if(ws?.readyState === WebSocket.OPEN && participantId) send({type:'ping'}); }, 10000);
+window.addEventListener('beforeunload', cleanup);
+</script>
+</html>
