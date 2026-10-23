@@ -43,4 +43,9 @@ ashpd = { version = "0.13", features = ["screencast"], optional = true }
 pipewire = { version = "0.10", features = ["v0_3_65"], optional = true }
 
 [dev-dependencies]
+pingo-sfu.workspace = true
+axum.workspace = true
+async-trait = "0.1"
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
+tempfile = "3"
 anyhow.workspace = true

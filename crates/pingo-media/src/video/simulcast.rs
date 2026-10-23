@@ -163,7 +163,7 @@ impl SimulcastEncoder {
     pub fn encode(&mut self, frame: &CapturedFrame) -> Result<Vec<EncodedVideoFrame>> {
         frame.validate()?;
         if self.last.is_some_and(|last| {
-            frame.timestamp.saturating_sub(last)
+            (frame.timestamp.saturating_sub(last) + Duration::from_micros(500))
                 < Duration::from_secs_f64(1.0 / self.config.fps as f64)
         }) {
             return Ok(Vec::new());

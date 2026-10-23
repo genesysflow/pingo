@@ -70,7 +70,10 @@ impl CapturedFrame {
             return Err(VideoError::Invalid("capture dimensions must be 1..8192"));
         }
         if self.stride < self.width as usize * 4
-            || self.data.len() < self.stride * self.height as usize
+            || self
+                .stride
+                .checked_mul(self.height as usize)
+                .is_none_or(|size| self.data.len() < size)
         {
             return Err(VideoError::Invalid("short packed pixel buffer"));
         }
