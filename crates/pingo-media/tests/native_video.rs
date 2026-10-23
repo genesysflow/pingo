@@ -2,7 +2,7 @@
 use openh264::{decoder::Decoder, formats::YUVSource};
 use pingo_media::{
     pipeline::AudioSettings,
-    rtc::{Client, ClientConfig, Command, RtcEvent},
+    rtc::{Client, ClientConfig, Command, PlaybackFrame, RtcEvent},
     video::{
         capture::{CaptureOptions, ScreenCapturer, synthetic::SyntheticScreen},
         color::{I420Frame, psnr},
@@ -28,6 +28,7 @@ struct Native {
     commands: mpsc::Sender<Command>,
     events: broadcast::Receiver<RtcEvent>,
     task: tokio::task::JoinHandle<pingo_media::Result<()>>,
+    playback: mpsc::Receiver<PlaybackFrame>,
 }
 impl Native {
     async fn join(url: &str, token: String) -> Self {
@@ -39,11 +40,13 @@ impl Native {
         .unwrap();
         let events = client.events.subscribe();
         let (commands, rx) = mpsc::channel(32);
-        let task = tokio::task::spawn_local(client.run(None, rx));
+        let (playback_tx, playback) = mpsc::channel(64);
+        let task = tokio::task::spawn_local(client.run_with_playback(None, rx, Some(playback_tx)));
         let mut native = Self {
             commands,
             events,
             task,
+            playback,
         };
         native
             .wait(|event| matches!(event, RtcEvent::Connected))
@@ -54,13 +57,13 @@ impl Native {
         tokio::time::timeout(Duration::from_secs(12), async {
             loop {
                 let event = self.events.recv().await.unwrap();
+                if predicate(&event) {
+                    return event;
+                }
                 assert!(
                     !matches!(event, RtcEvent::Error { .. } | RtcEvent::DeviceError(_)),
                     "{event:?}"
                 );
-                if predicate(&event) {
-                    return event;
-                }
             }
         })
         .await
@@ -96,7 +99,9 @@ async fn exercise(url: &str, a_token: String, b_token: String, mode: VideoMode) 
     a.commands.send(Command::PublishAudio(false)).await.unwrap();
     let mut config = VideoPublishConfig::screen(320, 180, mode);
     config.prefer_hardware = false;
-    config.bitrate = 1_000_000;
+    // The 60 fps low layer also needs a quality budget. Congestion/bitrate
+    // adaptation is covered independently; this fixture measures decode quality.
+    config.bitrate = 2_000_000;
     a.commands
         .send(Command::PublishVideo {
             source: VideoSource::Screen,
@@ -212,6 +217,12 @@ async fn exercise(url: &str, a_token: String, b_token: String, mode: VideoMode) 
     b.stop().await;
 }
 async fn in_process(mode: VideoMode) {
+    let (sfu, http, url) = server().await;
+    exercise(&url, admission("publisher"), admission("viewer"), mode).await;
+    sfu.shutdown().await;
+    http.abort();
+}
+async fn server() -> (Sfu, tokio::task::JoinHandle<()>, String) {
     let sfu = Sfu::start(
         SfuConfig {
             udp_bind: "127.0.0.1:0".parse().unwrap(),
@@ -228,9 +239,7 @@ async fn in_process(mode: VideoMode) {
     let http = tokio::spawn(async move {
         axum::serve(listener, router).await.unwrap();
     });
-    exercise(&url, admission("publisher"), admission("viewer"), mode).await;
-    sfu.shutdown().await;
-    http.abort();
+    (sfu, http, url)
 }
 #[tokio::test]
 async fn native_screen_text_through_in_process_sfu() {
@@ -243,6 +252,134 @@ async fn native_screen_motion_through_in_process_sfu() {
     tokio::task::LocalSet::new()
         .run_until(in_process(VideoMode::Motion))
         .await;
+}
+
+#[tokio::test]
+async fn failed_video_start_keeps_the_call_connected() {
+    tokio::task::LocalSet::new().run_until(async {
+        let (sfu, http, url) = server().await;
+        let mut a = Native::join(&url, admission("publisher")).await;
+        let mut b = Native::join(&url, admission("viewer")).await;
+        let mut config = VideoPublishConfig::screen(320, 180, VideoMode::Text);
+        config.prefer_hardware = false;
+        #[cfg(not(feature = "vp8"))]
+        { config.codec = pingo_media::video::encode::VideoCodec::Vp8; }
+        #[cfg(feature = "vp8")]
+        { config.bitrate = 1; }
+        a.commands.send(Command::PublishVideo { source: VideoSource::Screen, config: Some(config) }).await.unwrap();
+        a.wait(|e| matches!(e, RtcEvent::DeviceError(_))).await;
+        a.commands.send(Command::Data(pingo_proto::DataMsg::Reaction {
+            participant_id: String::new(), emoji: "🎥".into(),
+        })).await.unwrap();
+        b.wait(|e| matches!(e, RtcEvent::Data(pingo_proto::DataMsg::Reaction { emoji, .. }) if emoji == "🎥")).await;
+        // Stop also wins over any encoder startup still in flight.
+        a.commands.send(Command::PublishVideo { source: VideoSource::Screen, config: None }).await.unwrap();
+        a.stop().await;
+        b.stop().await;
+        sfu.shutdown().await;
+        http.abort();
+    }).await;
+}
+
+#[tokio::test]
+async fn native_camera_and_stereo_screen_audio_have_independent_tracks() {
+    tokio::task::LocalSet::new().run_until(async {
+        let (sfu, http, url) = server().await;
+        let a = Native::join(&url, admission("publisher")).await;
+        let mut b = Native::join(&url, admission("viewer")).await;
+        a.commands.send(Command::PublishAudio(false)).await.unwrap();
+        let mut config = VideoPublishConfig::screen(320, 180, VideoMode::Motion);
+        config.source = VideoSource::Camera;
+        config.fps = 25;
+        config.bitrate = 2_000_000;
+        config.prefer_hardware = false;
+        a.commands.send(Command::PublishVideo { source: VideoSource::Camera, config: Some(config) }).await.unwrap();
+        a.commands.send(Command::PublishScreenAudio(true)).await.unwrap();
+        let mut camera = None;
+        let mut audio = None;
+        while camera.is_none() || audio.is_none() {
+            if let RtcEvent::TrackPublished(track) = b.wait(|e| matches!(e, RtcEvent::TrackPublished(_))).await {
+                match track.kind {
+                    TrackKind::Camera => camera = Some(track.mid),
+                    TrackKind::ScreenAudio => audio = Some(track.mid),
+                    _ => {}
+                }
+            }
+        }
+        let feed = a.commands.clone();
+        let feeding = tokio::task::spawn_local(async move {
+            let mut screen = SyntheticScreen::new(320, 180, true).unwrap();
+            screen.start(CaptureOptions { max_fps: 25, ..Default::default() }).await.unwrap();
+            let mut tick = tokio::time::interval(Duration::from_millis(10));
+            tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+            for quantum in 0..200 {
+                tick.tick().await;
+                if quantum % 4 == 0 {
+                    feed.send(Command::VideoFrame { source: VideoSource::Camera,
+                        frame: Box::new(screen.next_frame(Duration::ZERO).unwrap().unwrap()) }).await.unwrap();
+                }
+                let frame = Box::new(std::array::from_fn(|sample| {
+                    let time = (quantum * pingo_media::FRAME_SAMPLES + sample) as f32 / 48_000.0;
+                    [0.15 * (time * 440.0 * std::f32::consts::TAU).sin(),
+                     0.15 * (time * 880.0 * std::f32::consts::TAU).sin()]
+                }));
+                feed.send(Command::CaptureScreenAudio(frame)).await.unwrap();
+            }
+        });
+        let mut decoder = Decoder::new().unwrap();
+        let mut decoded_frames = 0;
+        let mut pcm = Vec::new();
+        let deadline = tokio::time::Instant::now() + Duration::from_millis(2400);
+        loop {
+            tokio::select! {
+                _ = tokio::time::sleep_until(deadline) => break,
+                frame = b.playback.recv() => pcm.extend_from_slice(frame.unwrap().frame.as_slice()),
+                event = b.events.recv() => match event.unwrap() {
+                    RtcEvent::VideoFrame { track, frame } => {
+                        assert_eq!(track.kind, TrackKind::Camera);
+                        if let Some(decoded) = decoder.decode(&frame.data).unwrap() {
+                            assert!(matches!(decoded.dimensions(), (80, 44) | (160, 90) | (320, 180)));
+                            decoded_frames += 1;
+                        }
+                    }
+                    RtcEvent::DeviceError(error) => panic!("{error}"),
+                    RtcEvent::Error { code, message } => panic!("{code}: {message}"),
+                    _ => {}
+                }
+            }
+        }
+        feeding.await.unwrap();
+        assert!(decoded_frames >= 30, "only {decoded_frames} camera frames");
+        let pcm = &pcm[pcm.len().saturating_sub(48_000)..];
+        assert!(pcm.len() >= 48_000);
+        let amplitude = |channel: usize, hz: f64| {
+            let (mut re, mut im) = (0.0, 0.0);
+            for (i, frame) in pcm.iter().enumerate() {
+                let phase = i as f64 * hz * std::f64::consts::TAU / 48_000.0;
+                re += frame[channel] as f64 * phase.cos();
+                im += frame[channel] as f64 * phase.sin();
+            }
+            2.0 * re.hypot(im) / pcm.len() as f64
+        };
+        let left = amplitude(0, 440.0);
+        let right = amplitude(1, 880.0);
+        assert!(left > 0.02 && right > 0.02, "screen stereo amplitudes {left}/{right}");
+        assert!(amplitude(0, 880.0) < left * 0.1);
+        assert!(amplitude(1, 440.0) < right * 0.1);
+        eprintln!("native camera: {decoded_frames} frames; ScreenAudio stereo amplitudes {left:.3}/{right:.3}");
+        a.commands.send(Command::PublishVideo { source: VideoSource::Camera, config: None }).await.unwrap();
+        a.commands.send(Command::PublishScreenAudio(false)).await.unwrap();
+        while camera.is_some() || audio.is_some() {
+            if let RtcEvent::TrackUnpublished { mid, .. } = b.wait(|e| matches!(e, RtcEvent::TrackUnpublished { .. })).await {
+                if camera.as_ref() == Some(&mid) { camera = None; }
+                if audio.as_ref() == Some(&mid) { audio = None; }
+            }
+        }
+        a.stop().await;
+        b.stop().await;
+        sfu.shutdown().await;
+        http.abort();
+    }).await;
 }
 
 struct Backend {

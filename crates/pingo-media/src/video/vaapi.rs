@@ -32,6 +32,9 @@ pub struct VaapiH264 {
 impl VaapiH264 {
     pub fn new(settings: EncoderSettings) -> Result<Self> {
         settings.validate()?;
+        if settings.codec != VideoCodec::H264 {
+            return Err(VideoError::Invalid("VAAPI H264 encoder codec"));
+        }
         ffmpeg::init().map_err(encoder_error)?;
         let path =
             std::env::var("PINGO_VAAPI_DEVICE").unwrap_or_else(|_| "/dev/dri/renderD128".into());
@@ -71,6 +74,12 @@ impl VaapiH264 {
         context.set_width(settings.width);
         context.set_height(settings.height);
         context.set_format(Pixel::VAAPI);
+        // Match the conversion matrix; otherwise browsers assume BT.601 and
+        // saturated desktop colors shift on the hardware path.
+        context.set_colorspace(ffmpeg::color::Space::BT709);
+        context.set_color_range(ffmpeg::color::Range::MPEG);
+        context.set_color_primaries(ffmpeg::color::Primaries::BT709);
+        context.set_color_transfer_characteristic(ffmpeg::color::TransferCharacteristic::BT709);
         context.set_time_base((1, 90_000));
         context.set_frame_rate(Some((settings.fps as i32, 1)));
         context.set_bit_rate(settings.bitrate as usize);

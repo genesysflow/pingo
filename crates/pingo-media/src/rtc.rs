@@ -722,8 +722,26 @@ impl Client {
         let mut quality_tick = tokio::time::interval(Duration::from_secs(1));
         let mut buffer = [0u8; 65_536];
         let mut video_workers = HashMap::<VideoSource, crate::video::worker::EncoderWorker>::new();
+        let mut video_configs = HashMap::<VideoSource, VideoPublishConfig>::new();
+        let mut desired_video = HashMap::<VideoSource, Option<VideoPublishConfig>>::new();
+        let mut video_starting = HashSet::new();
+        let mut video_startups = tokio::task::JoinSet::new();
         let mut screen_audio_sender = None::<SendPipeline>;
         loop {
+            // Driver/codec initialization can take seconds. Keep the audio and
+            // ICE clocks running, with at most one startup per video source.
+            for (source, config) in &desired_video {
+                if let Some(config) = config
+                    && video_configs.get(source) != Some(config)
+                    && video_starting.insert(*source)
+                {
+                    let config = config.clone();
+                    video_startups.spawn_blocking(move || {
+                        let result = crate::video::worker::EncoderWorker::new(config.clone());
+                        (config, result)
+                    });
+                }
+            }
             let deadline = loop {
                 match self.session.poll_output()? {
                     Output::Transmit(tx) => {
@@ -756,6 +774,26 @@ impl Client {
                 let _ = self.events.send(event);
             }
             tokio::select! {
+                started = video_startups.join_next(), if !video_startups.is_empty() => {
+                    let (config, result) = started.expect("nonempty startup set").map_err(rtc_error)?;
+                    let source = config.source;
+                    video_starting.remove(&source);
+                    // A stop or newer configuration may have arrived while opening the driver.
+                    if desired_video.get(&source).and_then(Option::as_ref) != Some(&config) {
+                        continue;
+                    }
+                    match result {
+                        Ok(worker) => {
+                            self.session.set_video_published(source, Some(config.clone()))?;
+                            video_configs.insert(source, config);
+                            video_workers.insert(source, worker);
+                        }
+                        Err(error) => {
+                            desired_video.insert(source, video_configs.get(&source).cloned());
+                            let _ = self.events.send(RtcEvent::DeviceError(error.to_string()));
+                        }
+                    }
+                }
                 message = self.websocket.next() => {
                     match message {
                         Some(Ok(Message::Text(text))) => self.session.signal(serde_json::from_str(&text)?)?,
@@ -831,15 +869,20 @@ impl Client {
                         if let Some(packet) = self.sender.process(&frame)? { self.session.send_audio(packet, Instant::now())?; }
                     }
                     Some(Command::PublishVideo { source,config }) => {
-                        if let Some(config)=config {
-                            if config.source!=source { return Err(Error::Invalid("video source/config mismatch")); }
-                            let worker=crate::video::worker::EncoderWorker::new(config.clone()).map_err(rtc_error)?;
-                            self.session.set_video_published(source,Some(config))?;
-                            video_workers.insert(source,worker);
+                        if let Some(config)=&config {
+                            let error = if config.source != source {
+                                Some("video source/config mismatch".to_owned())
+                            } else { config.layers().err().map(|error| error.to_string()) };
+                            if let Some(error) = error {
+                                let _ = self.events.send(RtcEvent::DeviceError(error));
+                                continue;
+                            }
                         } else {
                             self.session.set_video_published(source,None)?;
                             video_workers.remove(&source);
+                            video_configs.remove(&source);
                         }
+                        desired_video.insert(source, config);
                     }
                     Some(Command::VideoFrame { source,frame }) => { if let Some(worker)=video_workers.get(&source) { worker.frame(frame); } }
                     Some(Command::EncodedVideo { source,frame }) => { self.session.send_video(source,frame,Instant::now())?; }

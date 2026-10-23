@@ -155,30 +155,72 @@ fn simulcast_sizes_cadence_and_pli_on_requested_layer() {
     let mut later = source.frame_at(2);
     later.timestamp = Duration::from_millis(200);
     assert_eq!(encoder.encode(&later).unwrap().len(), 2);
+    encoder.set_bandwidth(u64::MAX).unwrap();
+    encoder.set_bandwidth(0).unwrap();
 }
 
 #[cfg(feature = "vp8")]
 #[test]
-fn vp8_produces_browser_bitstream_and_keyframe_on_request() {
+fn vp8_roundtrip_psnr_and_keyframe_on_request() {
+    use ffmpeg_next::{Packet, codec, decoder, frame};
     use pingo_media::video::encode::SoftwareVp8;
-    let mut settings = encoder_settings(VideoMode::Motion);
-    settings.codec = VideoCodec::Vp8;
-    let mut encoder = SoftwareVp8::new(settings).unwrap();
-    let frame = I420Frame::from_capture(&SyntheticScreen::new(320, 180, true).unwrap().frame_at(0))
-        .unwrap();
-    for index in 0..5 {
-        if index == 3 {
-            encoder.request_keyframe();
+    struct Decoded(frame::Video);
+    impl YUVSource for Decoded {
+        fn dimensions(&self) -> (usize, usize) {
+            (self.0.width() as usize, self.0.height() as usize)
         }
-        let encoded = encoder
-            .encode(&frame, Duration::from_millis(index * 20))
-            .unwrap()
+        fn strides(&self) -> (usize, usize, usize) {
+            (self.0.stride(0), self.0.stride(1), self.0.stride(2))
+        }
+        fn y(&self) -> &[u8] {
+            self.0.data(0)
+        }
+        fn u(&self) -> &[u8] {
+            self.0.data(1)
+        }
+        fn v(&self) -> &[u8] {
+            self.0.data(2)
+        }
+    }
+    for mode in [VideoMode::Text, VideoMode::Motion] {
+        let mut settings = encoder_settings(mode);
+        settings.codec = VideoCodec::Vp8;
+        let mut encoder = SoftwareVp8::new(settings).unwrap();
+        let source = SyntheticScreen::new(320, 180, mode == VideoMode::Motion).unwrap();
+        let codec = decoder::find(codec::Id::VP8).unwrap();
+        let mut decoder = codec::context::Context::new_with_codec(codec)
+            .decoder()
+            .video()
             .unwrap();
-        assert_eq!(encoded.codec, VideoCodec::Vp8);
-        if index == 0 || index == 3 {
-            assert!(encoded.keyframe);
-            assert_eq!(&encoded.data[3..6], &[0x9d, 0x01, 0x2a]);
+        let mut minimum = f64::INFINITY;
+        for index in 0..30 {
+            let frame = I420Frame::from_capture(&source.frame_at(index)).unwrap();
+            if index == 15 {
+                encoder.request_keyframe();
+            }
+            if index == 20 {
+                encoder.set_bitrate(1_000_000).unwrap();
+            }
+            let encoded = encoder
+                .encode(
+                    &frame,
+                    Duration::from_secs_f64(index as f64 / mode.fps() as f64),
+                )
+                .unwrap()
+                .unwrap();
+            assert_eq!(encoded.codec, VideoCodec::Vp8);
+            if index == 0 || index == 15 || index == 20 {
+                assert!(encoded.keyframe);
+                assert_eq!(&encoded.data[3..6], &[0x9d, 0x01, 0x2a]);
+            }
+            decoder.send_packet(&Packet::copy(&encoded.data)).unwrap();
+            let mut decoded = Decoded(frame::Video::empty());
+            decoder.receive_frame(&mut decoded.0).unwrap();
+            assert_eq!(decoded.dimensions(), (320, 180));
+            minimum = minimum.min(psnr(&frame, &decoded).unwrap());
         }
+        eprintln!("VP8 {mode:?}: minimum YUV PSNR {minimum:.2} dB");
+        assert!(minimum > 32.0, "VP8 {mode:?}: PSNR {minimum}");
     }
 }
 

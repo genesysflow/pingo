@@ -137,14 +137,13 @@ impl SimulcastEncoder {
         self.last = None;
     }
     pub fn set_bandwidth(&mut self, bits_per_second: u64) -> Result<()> {
-        let budget = bits_per_second.saturating_sub(128_000) * 8 / 10;
+        let budget = bits_per_second.saturating_sub(128_000).saturating_mul(8) / 10;
         if self
             .last_budget
             .is_some_and(|old| old.abs_diff(budget) < old / 5)
         {
             return Ok(());
         }
-        self.last_budget = Some(budget);
         let total = self
             .layers
             .iter()
@@ -158,6 +157,7 @@ impl SimulcastEncoder {
                 layer.target = target;
             }
         }
+        self.last_budget = Some(budget);
         Ok(())
     }
     pub fn encode(&mut self, frame: &CapturedFrame) -> Result<Vec<EncodedVideoFrame>> {

@@ -37,7 +37,7 @@ fn flag(name: &str) -> bool {
 async fn main() -> anyhow::Result<()> {
     if flag("--help") {
         println!(
-            "screenshare --url ws://host/rtc --token TOKEN [--synthetic] [--motion] [--vp8] [--software] [--seconds N] [--source monitor|window] [--restore-token-file PATH] [--audio-app SERIAL]\n--capture-only runs the portal without a room. --probe reports capture nodes. Tokens may use PINGO_MEDIA_TOKEN."
+            "screenshare --url ws://host/rtc --token TOKEN [--synthetic] [--motion] [--fps N] [--vp8] [--software] [--seconds N] [--source monitor|window] [--restore-token-file PATH] [--audio-app SERIAL]\n--capture-only runs capture and encode without a room. --synthetic accepts --width/--height (default 640x360). --probe reports capture nodes. Tokens may use PINGO_MEDIA_TOKEN."
         );
         return Ok(());
     }
@@ -58,8 +58,24 @@ async fn main() -> anyhow::Result<()> {
         .transpose()?
         .unwrap_or(20);
     let synthetic = flag("--synthetic");
+    let fps = arg("--fps")
+        .map(|n| n.parse::<u32>())
+        .transpose()?
+        .unwrap_or(mode.fps());
     let mut capture: Box<dyn ScreenCapturer> = if synthetic {
-        Box::new(SyntheticScreen::new(640, 360, mode == VideoMode::Motion)?)
+        let width = arg("--width")
+            .map(|n| n.parse::<u32>())
+            .transpose()?
+            .unwrap_or(640);
+        let height = arg("--height")
+            .map(|n| n.parse::<u32>())
+            .transpose()?
+            .unwrap_or(360);
+        Box::new(SyntheticScreen::new(
+            width,
+            height,
+            mode == VideoMode::Motion,
+        )?)
     } else {
         #[cfg(all(target_os = "linux", feature = "linux-capture"))]
         {
@@ -72,7 +88,7 @@ async fn main() -> anyhow::Result<()> {
     };
     let token_file = arg("--restore-token-file");
     let options = CaptureOptions {
-        max_fps: mode.fps(),
+        max_fps: fps,
         source: arg("--source").unwrap_or_else(|| "monitor".into()),
         restore_token: token_file
             .as_ref()
@@ -104,6 +120,8 @@ async fn main() -> anyhow::Result<()> {
         mode,
     );
     video.prefer_hardware = !flag("--software");
+    video.fps = fps;
+    video.layers()?;
     if flag("--vp8") {
         video.codec = VideoCodec::Vp8;
     }
@@ -143,7 +161,8 @@ async fn main() -> anyhow::Result<()> {
         let result = (|| -> anyhow::Result<()> {
             while !stopped.load(Ordering::Relaxed) {
                 if synthetic {
-                    std::thread::sleep(Duration::from_secs_f64(1.0 / video.fps as f64));
+                    let due = start + Duration::from_secs_f64(frames as f64 / video.fps as f64);
+                    std::thread::sleep(due.saturating_duration_since(Instant::now()));
                 }
                 let frame = match next.take() {
                     Some(frame) => Some(frame),
@@ -245,7 +264,8 @@ fn measure(
     let mut first = Some(first);
     while start.elapsed() < Duration::from_secs(seconds) {
         if synthetic {
-            std::thread::sleep(Duration::from_secs_f64(1.0 / config.fps as f64));
+            let due = start + Duration::from_secs_f64(frames as f64 / config.fps as f64);
+            std::thread::sleep(due.saturating_duration_since(Instant::now()));
         }
         let frame = match first.take() {
             Some(frame) => Some(frame),
@@ -266,7 +286,7 @@ fn measure(
         start.elapsed().as_secs_f64(),
         frames as f64 / start.elapsed().as_secs_f64(),
         encoded as f64 / start.elapsed().as_secs_f64(),
-        encode.as_secs_f64() * 1000.0 / frames.max(1) as f64
+        encode.as_secs_f64() * 1000.0 / encoded.max(1) as f64
     );
     Ok(())
 }
