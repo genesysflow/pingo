@@ -32,6 +32,18 @@ describe('native call controller', () => {
     event('quality', { quality: 'Poor' }); expect(call.quality).toBe('Poor');
     event('playout', { receivedPackets: 12 }); expect(call.receivedPackets).toBe(12);
   });
+  test('remote tracks disappear when their participant leaves or the call reconnects', async () => {
+    await call.join('room', 'Friends');
+    event('joined', { participantId: 'self', participants: [{ participantId: 'peer', user: 'maya' }] });
+    event('trackPublished', { track: { participantId: 'peer', mid: 'screen', kind: 'screen' } });
+    expect(call.media).toMatchObject([{ mid: 'screen', user: 'maya', native: true }]);
+    event('participantLeft', { participantId: 'peer' });
+    expect(call.media).toEqual([]);
+    event('participantJoined', { participant: { participantId: 'peer', user: 'maya' } });
+    event('trackPublished', { track: { participantId: 'peer', mid: 'camera', kind: 'camera' } });
+    event('disconnected');
+    expect(call.media).toEqual([]); expect(call.participants).toEqual([]);
+  });
   test('reconnect obtains fresh admission and ignores old session events', async () => {
     await call.join('room', 'Friends'); const old = joinArgs(); event('connected'); event('disconnected');
     expect(call.connection).toBe('reconnecting');

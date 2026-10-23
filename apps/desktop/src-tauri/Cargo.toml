@@ -36,5 +36,5 @@ url = "2"
 str0m = { version = "0.24", default-features = false, features = ["unversioned", "rust-crypto"] }
 
 [dev-dependencies]
-reqwest = { version = "0.13", default-features = false, features = ["json"] }
+reqwest = { version = "0.13", default-features = false, features = ["json", "rustls"] }
 tempfile = "3"

@@ -78,3 +78,12 @@ Part B verification: `cargo test -p pingo-desktop` (7 tests),
 `cargo clippy -p pingo-desktop --all-targets -- -D warnings`, `bun run check` (zero diagnostics),
 `bun run test` (29 tests including five mocked Tauri controller tests), and `bun run build`.
 No pingo-media API or wire contract changed for audio integration.
+
+Resumption fixes: removed stray diff markers from the native sound-check wizard and clear remote
+video tiles immediately when a participant leaves or a call reconnects. The standalone real-server
+smoke now explicitly enables reqwest's TLS provider (previously panicked before HTTP setup).
+Verified `cargo test -p pingo-desktop` (11 tests), and
+`cargo build -p pingo-server` followed by
+`cargo test -p pingo-desktop --test real_server -- --ignored --nocapture`: 334,080 non-silent
+decoded PCM bytes, 44 remote Opus packets and two durable participants. Web checks report zero
+diagnostics and all 30 unit tests pass.

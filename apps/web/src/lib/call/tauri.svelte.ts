@@ -106,7 +106,10 @@ export class TauriCallController extends CallState {
         this.configure(); break;
       case 'participantLeft': {
         const p = this.participants.find(p => p.participantId === event.participantId);
-        if (p) { delete this.levels[p.user]; this.raised = this.raised.filter(u => u !== p.user); }
+        if (p) {
+          delete this.levels[p.user]; this.raised = this.raised.filter(u => u !== p.user);
+          this.media = this.media.filter(m => m.user !== p.user);
+        }
         this.participants = this.participants.filter(p => p.participantId !== event.participantId);
         break;
       }
@@ -138,7 +141,7 @@ export class TauriCallController extends CallState {
     if (!this.room || this.reconnectTimer || this.disposed) return;
     this.stopNative();
     const delay = this.retry.nextDelay();
-    this.error = message; this.levels = {};
+    this.error = message; this.levels = {}; this.media = []; this.participants = [];
     if (delay === null) { this.connection = 'failed'; return; }
     this.connection = 'reconnecting';
     const generation = this.generation, room = this.room;
