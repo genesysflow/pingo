@@ -180,3 +180,10 @@ The three-party case joins a third authenticated member and sends independent
 440/880 Hz Voice streams. B's mixed output must contain both narrow-band peaks
 (and no comparable 600 Hz peak), with two independent playout buffers. Measured
 amplitudes were 0.115/0.095, delays 28.3–29.8 ms, and zero loss/concealment.
+
+`Command::PublishAudio(false/true)` sends a complete PublishTracks snapshot and
+an inactive/send-only offer. Requests during a pending offer are applied after
+its answer. Full-server tests cover unpublish, republish onto a new receiving
+mid, stale-buffer removal and mute/unmute recovery; the in-memory RTC test
+covers deferred changes and offer glare. Playback queue overflow now feeds
+silence to AEC instead of a reference that never reached the speaker.

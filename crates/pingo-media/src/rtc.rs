@@ -73,6 +73,9 @@ pub struct Session {
     pending: Option<SdpPendingOffer>,
     local_sdp: String,
     audio_mid: Option<Mid>,
+    audio_published: bool,
+    offered_audio: bool,
+    negotiated_audio: bool,
     channel: Option<ChannelId>,
     joined: bool,
     pub connected: bool,
@@ -119,6 +122,9 @@ impl Session {
             pending: None,
             local_sdp: String::new(),
             audio_mid: None,
+            audio_published: true,
+            offered_audio: true,
+            negotiated_audio: false,
             channel: None,
             joined: false,
             connected: false,
@@ -162,23 +168,30 @@ impl Session {
                     participants,
                 });
                 let mut changes = self.rtc.sdp_api();
-                let mid =
-                    changes.add_media(MediaKind::Audio, Direction::SendOnly, None, None, None);
+                let mid = changes.add_media(
+                    MediaKind::Audio,
+                    if self.audio_published {
+                        Direction::SendOnly
+                    } else {
+                        Direction::Inactive
+                    },
+                    None,
+                    None,
+                    None,
+                );
                 changes.add_channel("pingo".into());
                 let (offer, pending) = changes
                     .apply()
                     .ok_or(Error::Invalid("empty initial offer"))?;
                 self.audio_mid = Some(mid);
                 self.pending = Some(pending);
+                self.offered_audio = self.audio_published;
                 self.local_sdp = opus_sdp(offer.to_sdp_string());
                 self.outgoing.push_back(ClientMsg::Offer {
                     sdp: self.local_sdp.clone(),
                 });
                 self.outgoing.push_back(ClientMsg::PublishTracks {
-                    tracks: vec![PublishedTrack {
-                        mid: mid.to_string(),
-                        kind: TrackKind::Audio,
-                    }],
+                    tracks: self.published_tracks(),
                 });
                 if self.settings.deafened || self.settings.gate == crate::audio::level::Gate::Muted
                 {
@@ -198,10 +211,12 @@ impl Session {
                     .sdp_api()
                     .accept_answer(pending, answer)
                     .map_err(rtc_error)?;
+                self.negotiated_audio = self.offered_audio;
                 self.events.push_back(RtcEvent::Negotiated {
                     local_sdp: self.local_sdp.clone(),
                     remote_sdp: sdp,
                 });
+                self.offer_audio_change()?;
             }
             ServerMsg::Offer { sdp } => {
                 // Contract: client offer wins glare; server retries after its answer.
@@ -383,7 +398,7 @@ impl Session {
         Ok(())
     }
     pub fn send_audio(&mut self, packet: EncodedPacket, now: Instant) -> Result<bool> {
-        if !self.connected {
+        if !self.connected || !self.audio_published || !self.negotiated_audio {
             return Ok(false);
         }
         let mid = self
@@ -420,6 +435,52 @@ impl Session {
         );
         Ok(true)
     }
+    /// PublishTracks is a full snapshot. Inactive (rather than stopped) media
+    /// can be republished on the same source mid, preserving the RTP clock.
+    pub fn set_audio_published(&mut self, published: bool) -> Result<()> {
+        self.audio_published = published;
+        self.offer_audio_change()
+    }
+
+    fn published_tracks(&self) -> Vec<PublishedTrack> {
+        self.audio_mid
+            .filter(|_| self.audio_published)
+            .into_iter()
+            .map(|mid| PublishedTrack {
+                mid: mid.to_string(),
+                kind: TrackKind::Audio,
+            })
+            .collect()
+    }
+
+    fn offer_audio_change(&mut self) -> Result<()> {
+        if !self.joined || self.pending.is_some() || self.negotiated_audio == self.audio_published {
+            return Ok(());
+        }
+        let mid = self.audio_mid.ok_or(Error::Invalid("no audio mid"))?;
+        let mut changes = self.rtc.sdp_api();
+        changes.set_direction(
+            mid,
+            if self.audio_published {
+                Direction::SendOnly
+            } else {
+                Direction::Inactive
+            },
+        );
+        if let Some((offer, pending)) = changes.apply() {
+            self.pending = Some(pending);
+            self.offered_audio = self.audio_published;
+            self.local_sdp = opus_sdp(offer.to_sdp_string());
+            self.outgoing.push_back(ClientMsg::Offer {
+                sdp: self.local_sdp.clone(),
+            });
+            self.outgoing.push_back(ClientMsg::PublishTracks {
+                tracks: self.published_tracks(),
+            });
+        }
+        Ok(())
+    }
+
     pub fn send_data(&mut self, message: &DataMsg) -> Result<bool> {
         let Some(id) = self.channel else {
             return Ok(false);
@@ -524,6 +585,7 @@ impl ClientConfig {
 pub enum Command {
     Settings(Box<AudioSettings>),
     Data(DataMsg),
+    PublishAudio(bool),
     Capture(Box<StereoFrame>),
     Leave,
 }
@@ -654,19 +716,22 @@ impl Client {
                 _ = tick.tick() => {
                     let now = Instant::now();
                     let output = self.session.receiver.render(now.duration_since(self.epoch).as_secs_f64()*1000.0)?;
-                    self.sender.render_reference(&output)?;
+                    let mut played = false;
                     if let Some(sink) = &playback {
-                        let _ = sink.try_send(PlaybackFrame { at: now, frame: Box::new(output) });
+                        played |= sink.try_send(PlaybackFrame { at: now, frame: Box::new(output) }).is_ok();
                     }
                     if let Some(io) = devices.as_mut() {
                         if io.stats().fault && let Err(error) = io.recover() {
                             let _ = self.events.send(RtcEvent::DeviceError(error.to_string()));
                         }
                         self.sender.set_stream_delay_ms(Some(io.stream_delay_ms()));
-                        io.playback(&output)?;
+                        played |= io.playback(&output)?;
+                        self.sender.render_reference(if played { &output } else { &[[0.0; 2]; crate::FRAME_SAMPLES] })?;
                         if let Some(capture) = io.capture()? && let Some(packet) = self.sender.process(&capture)? {
                             self.session.send_audio(packet, now)?;
                         }
+                    } else {
+                        self.sender.render_reference(if played { &output } else { &[[0.0; 2]; crate::FRAME_SAMPLES] })?;
                     }
                 }
                 _ = quality_tick.tick() => {
@@ -686,6 +751,7 @@ impl Client {
                         self.settings = *settings;
                     }
                     Some(Command::Data(data)) => { self.session.send_data(&data)?; }
+                    Some(Command::PublishAudio(published)) => self.session.set_audio_published(published)?,
                     Some(Command::Capture(frame)) => {
                         if let Some(packet) = self.sender.process(&frame)? { self.session.send_audio(packet, Instant::now())?; }
                     }

@@ -55,6 +55,7 @@ pub fn list_devices() -> Result<Vec<DeviceInfo>> {
 
 #[derive(Default)]
 struct Counters {
+    input_callback_frames: AtomicU64,
     input_latency_us: AtomicU64,
     output_latency_us: AtomicU64,
     fault: AtomicBool,
@@ -225,6 +226,9 @@ where
         .build_input_stream(
             config,
             move |data: &[T], info| {
+                counters
+                    .input_callback_frames
+                    .store((data.len() / channels) as u64, Ordering::Relaxed);
                 let stamp = info.timestamp();
                 if let Some(age) = stamp.callback.duration_since(&stamp.capture) {
                     counters
@@ -387,7 +391,13 @@ impl DeviceIo {
     pub fn stream_delay_ms(&self) -> u16 {
         let hardware_us = self.counters.input_latency_us.load(Ordering::Relaxed)
             + self.counters.output_latency_us.load(Ordering::Relaxed);
-        let capture_ms = self.capture.slots() as f64 * 1000.0 / self.input_rate as f64
+        // capture timestamp refers to the first sample of the last callback;
+        // its buffer duration is already included in input_latency_us.
+        let queued_capture = self
+            .capture
+            .slots()
+            .saturating_sub(self.counters.input_callback_frames.load(Ordering::Relaxed) as usize);
+        let capture_ms = queued_capture as f64 * 1000.0 / self.input_rate as f64
             + (self.captured.len() + self.input_resampler.delay_samples()) as f64 / 48.0;
         let playback_ms = (self.playback.buffer().capacity() - self.playback.slots()) as f64
             * 1000.0

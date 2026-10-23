@@ -392,3 +392,42 @@ async fn native_three_party_mix_contains_both_publishers() {
         })
         .await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_unpublish_republish_and_unmute_resume_audio() {
+    LocalSet::new().run_until(async {
+        let server = Server::start(true).await;
+        let a = Native::join(&server, &server.ann_auth, Profile::Voice).await;
+        let a_id = a.id();
+        let mut b = Native::join(&server, &server.bob_auth, Profile::Voice).await;
+        b.wait(|e| matches!(e, RtcEvent::TrackPublished(t) if t.participant_id == a_id)).await;
+        let (feeding, _) = feed(a.commands.clone(), 440.0, Profile::Voice, false);
+        let first = b.record(Duration::from_millis(800)).await;
+        assert!(first.iter().any(|f| f.frame.iter().any(|s| s[0].abs() > 0.05)));
+        a.commands.send(Command::PublishAudio(false)).await.unwrap();
+        b.wait(|e| matches!(e, RtcEvent::TrackUnpublished { participant_id, .. } if participant_id == &a_id)).await;
+        let quiet = b.record(Duration::from_millis(300)).await;
+        assert!(quiet.iter().all(|f| f.frame.iter().all(|s| s[0] == 0.0)), "unpublish left a stale buffer");
+        // Initial publication no longer satisfies the next wait.
+        b.observed.clear();
+        a.commands.send(Command::PublishAudio(true)).await.unwrap();
+        b.wait(|e| matches!(e, RtcEvent::TrackPublished(t) if t.participant_id == a_id)).await;
+        let resumed = b.record(Duration::from_millis(1500)).await;
+        let samples: Vec<_> = resumed.iter().skip(80).flat_map(|f| f.frame.iter().map(|s| s[0])).collect();
+        assert!(amplitude(&samples, 440.0) > 0.05, "republish did not resume media");
+        assert_eq!(b.stats().len(), 1, "old subscriber mid retained");
+        let mut muted = settings(Profile::Voice);
+        muted.gate = Gate::Muted;
+        a.commands.send(Command::Settings(Box::new(muted))).await.unwrap();
+        b.wait(|e| matches!(e, RtcEvent::ParticipantUpdated(p) if p.participant_id == a_id && p.muted)).await;
+        let quiet = b.record(Duration::from_millis(300)).await;
+        assert!(quiet.iter().all(|f| f.frame.iter().all(|s| s[0] == 0.0)));
+        a.commands.send(Command::Settings(Box::new(settings(Profile::Voice)))).await.unwrap();
+        b.wait(|e| matches!(e, RtcEvent::ParticipantUpdated(p) if p.participant_id == a_id && !p.muted)).await;
+        let resumed = b.record(Duration::from_millis(1500)).await;
+        let samples: Vec<_> = resumed.iter().skip(80).flat_map(|f| f.frame.iter().map(|s| s[0])).collect();
+        assert!(amplitude(&samples, 440.0) > 0.05, "unmute retained stale timeline or zero volume");
+        feeding.abort(); let _ = feeding.await;
+        a.stop().await; b.stop().await; server.stop().await;
+    }).await;
+}
