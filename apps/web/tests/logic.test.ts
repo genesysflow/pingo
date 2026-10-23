@@ -5,27 +5,142 @@ import { MockBackend, paginateMessages } from '../src/lib/data/backend';
 import { createSeed } from '../src/lib/data/seed';
 
 describe('spatial audio', () => {
-  it('preserves full volume at the same position', () => expect(spatialAudio({ x: 0, y: 0 }, { x: 0, y: 0 })).toEqual({ volume: 1, pan: 0 }));
-  it('falls off smoothly and uses left/right stereo position', () => { const r = spatialAudio({ x: 0, y: 0 }, { x: 130, y: 0 }); expect(r.volume).toBeCloseTo(.5); expect(r.pan).toBe(.5); expect(spatialAudio({ x: 0, y: 0 }, { x: -130, y: 0 })).toEqual({ ...r, pan: -.5 }); });
-  it('is silent at and outside the hearing radius', () => { expect(spatialAudio({ x: 0, y: 0 }, { x: 260, y: 0 }).volume).toBe(0); expect(spatialAudio({ x: 0, y: 0 }, { x: 500, y: 800 })).toEqual({ volume: 0, pan: 1 }); });
-  it('uses vertical distance without vertical stereo bias', () => expect(spatialAudio({ x: 30, y: 30 }, { x: 30, y: 160 })).toEqual({ volume: expect.closeTo(.5), pan: 0 }));
-  it('contains invalid positions and zero or negative radius', () => { for (const radius of [0, -1, NaN]) expect(spatialAudio({ x: 0, y: 0 }, { x: 0, y: 0 }, radius)).toEqual({ volume: 0, pan: 0 }); expect(spatialAudio({ x: Infinity, y: 0 }, { x: 0, y: 0 })).toEqual({ volume: 0, pan: 0 }); });
+  it('preserves full volume at the same position', () =>
+    expect(spatialAudio({ x: 0, y: 0 }, { x: 0, y: 0 })).toEqual({ volume: 1, pan: 0 }));
+  it('falls off smoothly and uses left/right stereo position', () => {
+    const r = spatialAudio({ x: 0, y: 0 }, { x: 130, y: 0 });
+    expect(r.volume).toBeCloseTo(0.5);
+    expect(r.pan).toBe(0.5);
+    expect(spatialAudio({ x: 0, y: 0 }, { x: -130, y: 0 })).toEqual({ ...r, pan: -0.5 });
+  });
+  it('is silent at and outside the hearing radius', () => {
+    expect(spatialAudio({ x: 0, y: 0 }, { x: 260, y: 0 }).volume).toBe(0);
+    expect(spatialAudio({ x: 0, y: 0 }, { x: 500, y: 800 })).toEqual({ volume: 0, pan: 1 });
+  });
+  it('uses vertical distance without vertical stereo bias', () =>
+    expect(spatialAudio({ x: 30, y: 30 }, { x: 30, y: 160 })).toEqual({
+      volume: expect.closeTo(0.5),
+      pan: 0,
+    }));
+  it('contains invalid positions and zero or negative radius', () => {
+    for (const radius of [0, -1, NaN])
+      expect(spatialAudio({ x: 0, y: 0 }, { x: 0, y: 0 }, radius)).toEqual({ volume: 0, pan: 0 });
+    expect(spatialAudio({ x: Infinity, y: 0 }, { x: 0, y: 0 })).toEqual({ volume: 0, pan: 0 });
+  });
 });
 describe('composer parsing and grouping', () => {
-  it('parses unique mentions with unicode and excludes email addresses', () => expect(parseMentions('Hi @Maya, @Alex! email@somewhere.com @Maya @Élodie @leo-park')).toEqual(['Maya', 'Alex', 'Élodie', 'leo-park']));
-  it('expands known emoji and leaves unknown names intact', () => expect(expandEmoji('Hello :wave: :seedling: :does_not_exist:')).toBe('Hello 👋 🌱 :does_not_exist:'));
+  it('parses unique mentions with unicode and excludes email addresses', () =>
+    expect(parseMentions('Hi @Maya, @Alex! email@somewhere.com @Maya @Élodie @leo-park')).toEqual([
+      'Maya',
+      'Alex',
+      'Élodie',
+      'leo-park',
+    ]));
+  it('expands known emoji and leaves unknown names intact', () =>
+    expect(expandEmoji('Hello :wave: :seedling: :does_not_exist:')).toBe('Hello 👋 🌱 :does_not_exist:'));
+  it('preserves code literals when parsing mentions and emoji', () => {
+    expect(parseMentions('`@Maya` @Alex \n```ts\n@Leo\n```')).toEqual(['Alex']);
+    expect(expandEmoji('`:wave:` :wave:')).toBe('`:wave:` 👋');
+  });
   const base = createSeed().messages[0];
-  it('groups the same author within five minutes', () => expect(isGrouped(base, { ...base, _creationTime: base._creationTime + 30_000 })).toBe(true));
-  it('does not group across authors, days, deleted messages, or five-minute gaps', () => { expect(isGrouped(undefined, base)).toBe(false); expect(isGrouped(base, { ...base, author: { ...base.author, user: 'other' } })).toBe(false); expect(isGrouped(base, { ...base, deleted: true })).toBe(false); expect(isGrouped(base, { ...base, _creationTime: base._creationTime + 300_000 })).toBe(false); const a = { ...base, _creationTime: new Date(2026, 9, 23, 23, 59).getTime() }; expect(isGrouped(a, { ...a, _creationTime: a._creationTime + 120_000 })).toBe(false); });
+  it('groups the same author within five minutes', () =>
+    expect(isGrouped(base, { ...base, _creationTime: base._creationTime + 30_000 })).toBe(true));
+  it('does not group across authors, days, deleted messages, or five-minute gaps', () => {
+    expect(isGrouped(undefined, base)).toBe(false);
+    expect(isGrouped(base, { ...base, author: { ...base.author, user: 'other' } })).toBe(false);
+    expect(isGrouped(base, { ...base, deleted: true })).toBe(false);
+    expect(isGrouped(base, { ...base, _creationTime: base._creationTime + 300_000 })).toBe(false);
+    const a = { ...base, _creationTime: new Date(2026, 9, 23, 23, 59).getTime() };
+    expect(isGrouped(a, { ...a, _creationTime: a._creationTime + 120_000 })).toBe(false);
+  });
 });
 describe('mock pagination and contract', () => {
-  it('returns newest first, top-level only and a stable cursor', () => { const { messages } = createSeed(); const first = paginateMessages(messages, 'design', { cursor: null, numItems: 20 }); const second = paginateMessages(messages, 'design', { cursor: first.continueCursor, numItems: 20 }); expect(first.page).toHaveLength(20); expect(first.page.every(m => !m.threadRoot && m.room === 'design')).toBe(true); expect(first.page[0]._creationTime).toBeGreaterThan(first.page.at(-1)!._creationTime); expect(second.page.some(m => first.page.some(p => p._id === m._id))).toBe(false); });
-  it('keeps the next page stable when a live message arrives', () => { const { messages } = createSeed(); const first = paginateMessages(messages, 'design', { cursor: null, numItems: 10 }); const before = paginateMessages(messages, 'design', { cursor: first.continueCursor, numItems: 10 }); messages.push({ ...messages[0], _id: 'live', room: 'design', _creationTime: Date.now() + 1000 }); expect(paginateMessages(messages, 'design', { cursor: first.continueCursor, numItems: 10 })).toEqual(before); });
-  it('honors a pinned endCursor even with live inserts', () => { const { messages } = createSeed(); const first = paginateMessages(messages, 'design', { cursor: null, numItems: 10 }); messages.push({ ...first.page[0], _id: 'live', _creationTime: Date.now() + 1000 }); const pinned = paginateMessages(messages, 'design', { cursor: null, numItems: 10, endCursor: first.continueCursor }); expect(pinned.page).toHaveLength(11); expect(pinned.continueCursor).toBe(first.continueCursor); });
-  it('exhausts empty and last pages', () => { const { messages } = createSeed(); expect(paginateMessages(messages, 'empty', { cursor: null, numItems: 10 }).isDone).toBe(true); const all = paginateMessages(messages, 'design', { cursor: null, numItems: 2000 }); expect(all.isDone).toBe(true); expect(all.page.length).toBeGreaterThan(1000); });
-  it('sends immediately, tracks threads, and toggles reactions', () => { const b = new MockBackend(); const root = b.mutate('messages:send', { room: 'design', body: 'Hi :wave:' }) as string; expect((b.query('messages:thread', { root }) as { root: { body: string } }).root.body).toBe('Hi 👋'); b.mutate('messages:send', { room: 'design', body: 'A reply', threadRoot: root }); expect((b.query('messages:thread', { root }) as { replies: unknown[] }).replies).toHaveLength(1); b.mutate('reactions:toggle', { message: root, emoji: '💜' }); b.mutate('reactions:toggle', { message: root, emoji: '💜' }); expect((b.query('messages:thread', { root }) as { root: { reactions: unknown[] } }).root.reactions).toEqual([]); });
-  it('enforces author and body restrictions and soft deletes', () => { const b = new MockBackend(); expect(() => b.mutate('messages:edit', { message: b.state.messages[0]._id, body: 'no' })).toThrow('own'); expect(() => b.mutate('messages:send', { room: 'design', body: 'a'.repeat(4001) })).toThrow('4,000'); const id = b.mutate('messages:send', { room: 'design', body: 'Temporary' }); b.mutate('messages:remove', { message: id }); expect((b.query('messages:thread', { root: id }) as { root: { deleted: boolean } }).root.deleted).toBe(true); });
-  it('publishes fresh snapshots, leaves previous snapshots immutable, and skips no-op reads', () => { const b = new MockBackend(); const first = b.query('rooms:list', { space: 'fieldwork' }); let notifications = 0; b.subscribe(() => notifications++); b.mutate('rooms:markRead', { room: 'general' }); expect(notifications).toBe(0); b.mutate('rooms:markRead', { room: 'design' }); expect(notifications).toBe(1); const next = b.query('rooms:list', { space: 'fieldwork' }); expect(next).not.toBe(first); expect((first as { _id: string; unread: number }[]).find(r => r._id === 'design')!.unread).toBe(6); });
-  it('supports signed-out profile and invite previews but gates private data', () => { const b = new MockBackend(); b.authenticated = false; expect(b.query('profiles:me')).toBe(null); expect(b.query('invites:preview', { code: 'friends' })).toBeTruthy(); expect(b.query('invites:preview', { code: 'expired' })).toBe(null); expect(() => b.query('spaces:list')).toThrow('sign in'); });
-  it('marks a calm inbox done and creates usable spaces', () => { const b = new MockBackend(); b.mutate('inbox:markAllDone'); expect(b.query('inbox:count')).toBe(0); const id = b.mutate('spaces:create', { name: 'A good place' }); const rooms = b.query('rooms:list', { space: id }) as { kind: string }[]; expect(rooms.map(r => r.kind)).toEqual(['chat', 'lounge']); });
+  it('returns newest first, top-level only and a stable cursor', () => {
+    const { messages } = createSeed();
+    const first = paginateMessages(messages, 'design', { cursor: null, numItems: 20 });
+    const second = paginateMessages(messages, 'design', { cursor: first.continueCursor, numItems: 20 });
+    expect(first.page).toHaveLength(20);
+    expect(first.page.every((m) => !m.threadRoot && m.room === 'design')).toBe(true);
+    expect(first.page[0]._creationTime).toBeGreaterThan(first.page.at(-1)!._creationTime);
+    expect(second.page.some((m) => first.page.some((p) => p._id === m._id))).toBe(false);
+  });
+  it('keeps the next page stable when a live message arrives', () => {
+    const { messages } = createSeed();
+    const first = paginateMessages(messages, 'design', { cursor: null, numItems: 10 });
+    const before = paginateMessages(messages, 'design', { cursor: first.continueCursor, numItems: 10 });
+    messages.push({ ...messages[0], _id: 'live', room: 'design', _creationTime: Date.now() + 1000 });
+    expect(paginateMessages(messages, 'design', { cursor: first.continueCursor, numItems: 10 })).toEqual(
+      before,
+    );
+  });
+  it('honors a pinned endCursor even with live inserts', () => {
+    const { messages } = createSeed();
+    const first = paginateMessages(messages, 'design', { cursor: null, numItems: 10 });
+    messages.push({ ...first.page[0], _id: 'live', _creationTime: Date.now() + 1000 });
+    const pinned = paginateMessages(messages, 'design', {
+      cursor: null,
+      numItems: 10,
+      endCursor: first.continueCursor,
+    });
+    expect(pinned.page).toHaveLength(11);
+    expect(pinned.continueCursor).toBe(first.continueCursor);
+  });
+  it('exhausts empty and last pages', () => {
+    const { messages } = createSeed();
+    expect(paginateMessages(messages, 'empty', { cursor: null, numItems: 10 }).isDone).toBe(true);
+    const all = paginateMessages(messages, 'design', { cursor: null, numItems: 2000 });
+    expect(all.isDone).toBe(true);
+    expect(all.page.length).toBeGreaterThan(1000);
+  });
+  it('sends immediately, tracks threads, and toggles reactions', () => {
+    const b = new MockBackend();
+    const root = b.mutate('messages:send', { room: 'design', body: 'Hi :wave:' }) as string;
+    expect((b.query('messages:thread', { root }) as { root: { body: string } }).root.body).toBe('Hi 👋');
+    b.mutate('messages:send', { room: 'design', body: 'A reply', threadRoot: root });
+    expect((b.query('messages:thread', { root }) as { replies: unknown[] }).replies).toHaveLength(1);
+    b.mutate('reactions:toggle', { message: root, emoji: '💜' });
+    b.mutate('reactions:toggle', { message: root, emoji: '💜' });
+    expect(
+      (b.query('messages:thread', { root }) as { root: { reactions: unknown[] } }).root.reactions,
+    ).toEqual([]);
+  });
+  it('enforces author and body restrictions and soft deletes', () => {
+    const b = new MockBackend();
+    expect(() => b.mutate('messages:edit', { message: b.state.messages[0]._id, body: 'no' })).toThrow('own');
+    expect(() => b.mutate('messages:send', { room: 'design', body: 'a'.repeat(4001) })).toThrow('4,000');
+    const id = b.mutate('messages:send', { room: 'design', body: 'Temporary' });
+    b.mutate('messages:remove', { message: id });
+    expect((b.query('messages:thread', { root: id }) as { root: { deleted: boolean } }).root.deleted).toBe(
+      true,
+    );
+  });
+  it('publishes fresh snapshots, leaves previous snapshots immutable, and skips no-op reads', () => {
+    const b = new MockBackend();
+    const first = b.query('rooms:list', { space: 'fieldwork' });
+    let notifications = 0;
+    b.subscribe(() => notifications++);
+    b.mutate('rooms:markRead', { room: 'general' });
+    expect(notifications).toBe(0);
+    b.mutate('rooms:markRead', { room: 'design' });
+    expect(notifications).toBe(1);
+    const next = b.query('rooms:list', { space: 'fieldwork' });
+    expect(next).not.toBe(first);
+    expect((first as { _id: string; unread: number }[]).find((r) => r._id === 'design')!.unread).toBe(6);
+  });
+  it('supports signed-out profile and invite previews but gates private data', () => {
+    const b = new MockBackend();
+    b.authenticated = false;
+    expect(b.query('profiles:me')).toBe(null);
+    expect(b.query('invites:preview', { code: 'friends' })).toBeTruthy();
+    expect(b.query('invites:preview', { code: 'expired' })).toBe(null);
+    expect(() => b.query('spaces:list')).toThrow('sign in');
+  });
+  it('marks a calm inbox done and creates usable spaces', () => {
+    const b = new MockBackend();
+    b.mutate('inbox:markAllDone');
+    expect(b.query('inbox:count')).toBe(0);
+    const id = b.mutate('spaces:create', { name: 'A good place' });
+    const rooms = b.query('rooms:list', { space: id }) as { kind: string }[];
+    expect(rooms.map((r) => r.kind)).toEqual(['chat', 'lounge']);
+  });
 });

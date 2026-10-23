@@ -1,4 +1,18 @@
 {
-  "compilerOptions": { "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler", "strict": true, "allowJs": true, "checkJs": true, "isolatedModules": true, "verbatimModuleSyntax": true, "resolveJsonModule": true, "esModuleInterop": true, "skipLibCheck": true, "lib": ["ES2022", "DOM", "DOM.Iterable"], "types": ["vite/client", "node"] },
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "allowJs": true,
+    "checkJs": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client", "node"]
+  },
   "include": ["src/**/*.ts", "src/**/*.svelte", "tests/**/*.ts", "*.ts"]
 }
