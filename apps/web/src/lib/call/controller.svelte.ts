@@ -6,6 +6,8 @@ export interface AudioSettings {
   speaker: string;
   suppression: 'Off' | 'Gentle' | 'Strong';
   studio: boolean;
+  echoCancel?: boolean;
+  pushToTalk?: boolean;
 }
 export interface CallMedia {
   mid: string;

@@ -52,3 +52,29 @@ environment must be set before WebKit starts; it can reduce rendering performanc
 is a known problematic combination. Keep hardware acceleration enabled on working systems.
 Linux requires WebKitGTK 4.1, GTK3, ALSA/libopus and an AppIndicator implementation for the tray.
 macOS and Windows bundle settings and macOS microphone/camera usage text exist but are unverified.
+
+## Native calls and sound check
+
+`CallManager` owns a bounded command queue and a dedicated current-thread Tokio worker. The worker owns
+CPAL, DSP, Opus and `pingo-media::rtc::Client`; no WebRTC/audio capture runs in the webview. The shared
+UI selects `TauriCallController` through Tauri's runtime detection and continues obtaining `voice.join`
+admission itself. Every join/retry uses a fresh token. Native events carry session IDs so late disconnects,
+old joins and stale commands cannot affect a replacement call. Five bounded exponential reconnect attempts
+match the browser policy. A 15-second watchdog catches stalled setup.
+
+Mute, deafen, push-to-talk, Off/Gentle/Strong suppression, Studio, AEC, device selection and per-user
+volume/pan feed native `AudioSettings`. Lounge distance gain multiplies the user's volume. The tray and
+global shortcut operate the native manager directly. Device lists refresh every three seconds, while
+stream recovery remains inside pingo-media. Native event overflow requests reconnect instead of leaving
+an incomplete participant map. Quality includes loss, jitter, RTT and current playout delay.
+
+Sound check lists CPAL devices and runs mic → send DSP/Opus → receive jitter/mix → selected speakers for
+five seconds, showing the resulting level. It does not use WebKit's microphone or recording APIs. Leave
+an active call before using loopback. Duplicate device names retain pingo-media's existing ambiguity.
+Native screen/camera **sending** is intentionally left to the concurrent pingo-media video implementation;
+unsupported controls show an error rather than simulating a successful share.
+
+Part B verification: `cargo test -p pingo-desktop` (7 tests),
+`cargo clippy -p pingo-desktop --all-targets -- -D warnings`, `bun run check` (zero diagnostics),
+`bun run test` (29 tests including five mocked Tauri controller tests), and `bun run build`.
+No pingo-media API or wire contract changed for audio integration.

@@ -7,6 +7,7 @@
   import Avatar from './Avatar.svelte';
   import { nativeDesktop, serverOrigin } from '../desktop/bridge';
   import DesktopSettings from '../desktop/DesktopSettings.svelte';
+  import NativeAudioControls from '../desktop/NativeAudioControls.svelte';
   let {
     page = 'Appearance',
     theme,
@@ -226,7 +227,7 @@
         ><button class="button primary" onclick={save}
           >Save your details<Icon name="check" size={16} /></button
         >
-      {:else if tab === 'Audio & video'}<p class="settings-description">
+      {:else if tab === 'Audio & video'}{#if nativeDesktop}<NativeAudioControls {call} />{/if}<p class="settings-description">
           Sound like yourself, wherever you are.
         </p>
         <div class="audio-summary">

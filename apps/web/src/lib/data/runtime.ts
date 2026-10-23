@@ -3,7 +3,8 @@ import { backend, startDemoActivity, setupMock } from './hooks.svelte';
 import { useMutation, useAuth, api, isDemo } from './index';
 import { MockCallController } from '../call/controller.svelte';
 import { BrowserCallController } from '../call/browser.svelte';
-import { serverOrigin } from '../desktop/bridge';
+import { nativeDesktop, serverOrigin } from '../desktop/bridge';
+import { TauriCallController } from '../call/tauri.svelte';
 export function initializeData() {
   if (isDemo) setupMock();
   else setupRxFerrix(serverOrigin());
@@ -17,7 +18,8 @@ export function createCall() {
       (room, state) => backend.updateCall(room, state),
     );
   const client = getRxFerrixClient();
-  return new BrowserCallController(
+  const Controller = nativeDesktop ? TauriCallController : BrowserCallController;
+  return new Controller(
     (room) => join({ room }),
     (room) => client.query(api.rooms.get, { room }),
     () => auth.userId ?? '',

@@ -1,3 +1,4 @@
+pub mod calls;
 mod config;
 
 use config::{DesktopState, Preferences};
@@ -118,14 +119,22 @@ pub fn run() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app, _, event| {
+            let _ = app.state::<calls::CallManager>().ptt(event.state == ShortcutState::Pressed);
             let _ = app.emit("desktop-ptt", event.state == ShortcutState::Pressed);
         }).build())
-        .invoke_handler(tauri::generate_handler![desktop_config, desktop_save_config, desktop_invites, desktop_notify])
+        .invoke_handler(tauri::generate_handler![desktop_config, desktop_save_config, desktop_invites, desktop_notify, call_join, call_leave, call_configure, call_data, call_ptt, call_devices, call_loopback])
         .setup(|app| {
+            app.manage(calls::CallManager::default());
+            let handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let mut last = Vec::new();
+                loop {
+                    if let Ok(devices) = calls::devices() && devices != last { let _ = handle.emit("native-devices", &devices); last = devices; }
+                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                }
+            });
             let preferences = Preferences::load(&app.path().app_config_dir()?.join("preferences.json"));
-            if let Some(shortcut) = preferences.push_to_talk_shortcut.as_deref() {
-                if let Err(error) = app.global_shortcut().register(shortcut) { tracing::warn!(%error, "global push-to-talk unavailable; use in-app shortcut"); }
-            }
+            if let Some(shortcut) = preferences.push_to_talk_shortcut.as_deref() && let Err(error) = app.global_shortcut().register(shortcut) { tracing::warn!(%error, "global push-to-talk unavailable; use in-app shortcut"); }
             app.manage(DesktopState { preferences: std::sync::Mutex::new(preferences), invites: std::sync::Mutex::new(Vec::new()) });
             let handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| accept_links(&handle, event.urls().into_iter().map(|u| u.to_string())));
@@ -139,7 +148,7 @@ pub fn run() {
             TrayIconBuilder::new().icon(app.default_window_icon().unwrap().clone()).menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "open" => show(app),
-                    "mute" => { let _ = app.emit("desktop-mute", ()); },
+                    "mute" => { if let Ok(settings) = app.state::<calls::CallManager>().toggle_mute() { let _ = app.emit("desktop-mute", settings.muted); } },
                     "quit" => app.exit(0),
                     _ => {}
                 }).build(app)?;
@@ -147,4 +156,82 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("Pingo desktop failed to start");
+}
+
+fn event_sink(app: tauri::AppHandle) -> calls::EventSink {
+    std::sync::Arc::new(move |event| {
+        let _ = app.emit("native-call", event);
+    })
+}
+#[tauri::command]
+fn call_join(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, DesktopState>,
+    manager: tauri::State<'_, calls::CallManager>,
+    session_id: String,
+    url: String,
+    token: String,
+    settings: calls::Settings,
+) -> Result<(), String> {
+    let origin = state
+        .preferences
+        .lock()
+        .unwrap()
+        .server_url
+        .clone()
+        .ok_or("Choose a server first")?;
+    manager
+        .join(
+            calls::JoinRequest {
+                id: session_id,
+                origin: &origin,
+                url: &url,
+                token,
+                settings,
+            },
+            event_sink(app),
+            true,
+        )
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn call_leave(manager: tauri::State<'_, calls::CallManager>, session_id: String) {
+    manager.leave(Some(&session_id));
+}
+#[tauri::command]
+fn call_configure(
+    manager: tauri::State<'_, calls::CallManager>,
+    session_id: String,
+    settings: calls::Settings,
+) -> Result<(), String> {
+    manager
+        .configure(&session_id, settings)
+        .map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn call_data(
+    manager: tauri::State<'_, calls::CallManager>,
+    session_id: String,
+    data: pingo_proto::DataMsg,
+) -> Result<(), String> {
+    manager.send(&session_id, data).map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn call_ptt(manager: tauri::State<'_, calls::CallManager>, pressed: bool) -> Result<(), String> {
+    manager.ptt(pressed).map_err(|e| e.to_string())
+}
+#[tauri::command]
+fn call_devices() -> Result<Vec<calls::Device>, String> {
+    calls::devices()
+}
+#[tauri::command]
+fn call_loopback(
+    app: tauri::AppHandle,
+    manager: tauri::State<'_, calls::CallManager>,
+    session_id: String,
+    settings: calls::Settings,
+) -> Result<(), String> {
+    manager
+        .loopback(session_id, settings, event_sink(app))
+        .map_err(|e| e.to_string())
 }

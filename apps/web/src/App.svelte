@@ -299,7 +299,7 @@
   });
 </script>
 
-{#if nativeDesktop}<DesktopEvents />{/if}
+{#if nativeDesktop}<DesktopEvents {call} />{/if}
 
 <svelte:window
   onkeydown={keyboard}
