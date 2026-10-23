@@ -151,3 +151,27 @@ frames followed by 5,000 timed frames:
   the latter is available from `RateConverter::delay_samples()`.
 
 No signaling or shared protocol contracts were changed.
+
+## Full-server native integration
+
+`cargo test -p pingo-server native_ -- --nocapture` starts RxFerrix and the
+embedded SFU in-process on ephemeral localhost HTTP/UDP ports. Users obtain
+admission through authenticated HTTP `voice:join`. Both endpoints use the native
+`rtc::Client`, `SendPipeline`, and `ReceivePipeline`; `run_with_playback` exposes
+bounded mixed PCM without CPAL. It checks 440 Hz plus speech-like bursts, marker
+click latency below the 150 ms product budget, authenticated Speaking messages,
+server mute/query state, disconnect cleanup, and independent Studio stereo
+channels. Negotiated SDP requires stereo, FEC and a 256 kbps receive ceiling;
+Studio's encoder uses 192 kbps VBR.
+
+Measured on localhost: Voice **66.75 ms**, Studio **56.93 ms** from synthetic
+capture to mixed playback, steady-state jitter-buffer delay **29.7–30.1 ms**,
+zero lost/concealed/late/corrupt packets. These include packetization, codec,
+playout and worker scheduling, with a 10 ms capture quantum; they exclude actual
+hardware/OS latency. Run output prints each receiver's full jitter statistics.
+
+The real-server tests found two interop bugs: SFU SDP inherited str0m's mono
+receive default, and client mute left old audio running through PLC. The SFU
+now advertises stereo explicitly (and a 256 kbps receive ceiling, which str0m
+0.24 cannot represent in FormatParams); the client drops queued audio and
+silences the mix on authoritative participant mute updates.

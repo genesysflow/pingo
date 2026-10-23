@@ -2966,6 +2966,7 @@ dependencies = [
  "axum",
  "bitflags 2.13.2",
  "futures-util",
+ "pingo-media",
  "pingo-proto",
  "pingo-sfu",
  "reqwest",

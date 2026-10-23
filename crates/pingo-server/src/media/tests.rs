@@ -513,3 +513,5 @@ async fn production_admission_fails_closed_when_secret_is_missing_or_removed() {
     let _ = ws.close(None).await;
     dev.stop().await;
 }
+
+mod native;
