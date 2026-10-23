@@ -7,7 +7,10 @@
     "tauri": "tauri",
     "dev": "tauri dev",
     "build": "tauri build",
-    "smoke": "bun scripts/smoke.ts"
+    "smoke": "bun scripts/smoke.ts",
+    "video:probe": "bun scripts/video-probe.ts"
   },
-  "devDependencies": { "@tauri-apps/cli": "^2" }
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
 }

@@ -114,6 +114,11 @@ fn desktop_notify(app: tauri::AppHandle, title: String, body: String) -> Result<
 }
 
 pub fn run() {
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()),
+        )
+        .try_init();
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _| { show(app); accept_links(app, args); }))
         .plugin(tauri_plugin_window_state::Builder::default().build())
@@ -201,7 +206,8 @@ fn call_join(
                 })),
             },
             event_sink(app),
-            true,
+            !(cfg!(debug_assertions)
+                && std::env::var("PINGO_DESKTOP_TEST_HEADLESS").ok().as_deref() == Some("1")),
         )
         .map_err(|e| e.to_string())
 }

@@ -15,15 +15,15 @@ export async function runVideoProbe(): Promise<boolean> {
       await new Promise(r => setTimeout(r, 100));
       report[codec] = { ...support, encodedBytesReceived: encodedBytes };
     }
-    for (const mode of ['jpeg_h264', 'jpeg_vp8']) for (const fps of [30, 60]) {
-      const latency: number[] = [];
+    for (const mode of ['h264', 'vp8', 'jpeg_h264', 'jpeg_vp8']) for (const fps of [30, 60]) {
+      const latency: number[] = [], errors: string[] = []; let received = 0, callbacks = 0;
       const channel = new Channel<ArrayBuffer>();
-      channel.onmessage = bytes => { requestAnimationFrame(() => {
-        void drawNativeFrame(canvas, bytes).then(frame => { latency.push(frame.latencyMs); return invoke('video_ack', { key: `spike:${mode}:${fps}`, frameId: frame.id }); });
+      channel.onmessage = bytes => { received++; requestAnimationFrame(() => { callbacks++;
+        void drawNativeFrame(canvas, bytes).then(frame => { latency.push(frame.latencyMs); return invoke('video_ack', { key: `spike:${mode}:${fps}`, frameId: frame.id }); }).catch(e => { errors.push(String(e)); });
       }); };
       const result = await invoke<Record<string, unknown>>('video_spike', { mode, fps, channel });
       latency.sort((a,b) => a-b);
-      (report.samples as unknown[]).push({ ...result, displayed: latency.length, ipcDisplayMedianMs: latency[Math.floor(latency.length*0.5)], ipcDisplayP95Ms: latency[Math.floor(latency.length*0.95)] });
+      (report.samples as unknown[]).push({ ...result, received, callbacks, errors, visibility: document.visibilityState, displayed: latency.length, ipcDisplayMedianMs: latency[Math.floor(latency.length*0.5)], ipcDisplayP95Ms: latency[Math.floor(latency.length*0.95)] });
     }
   } catch (e) { report.error = String(e); }
   await invoke('desktop_probe_report', { report });

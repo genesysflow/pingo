@@ -29,7 +29,7 @@ export function nativeVideo(sessionId: string, mid: string, canvas: HTMLCanvasEl
   };
   void invoke('video_subscribe', { sessionId, mid, channel }).then(() => {
     if (disposed) return invoke('video_unsubscribe', { sessionId, mid });
-    return invoke('call_video_quality', { sessionId, mid, maxHeight: 1080 });
+    return invoke('call_video_quality', { sessionId, mid, maxHeight: Math.max(0, Math.min(2160, Math.round(canvas.getBoundingClientRect().height * devicePixelRatio))) });
   }).catch(error);
   return () => { disposed = true; cancelAnimationFrame(animation); channel.onmessage = () => {}; void invoke('video_unsubscribe', { sessionId, mid }).catch(() => {}); };
 }

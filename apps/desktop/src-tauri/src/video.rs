@@ -2,24 +2,30 @@
 use pingo_media::rtc::RemoteVideoPacket;
 use std::{
     collections::HashMap,
-    io::{BufRead, BufReader, Write},
+    io::{BufRead, BufReader, Read, Write},
     process::{Command, Stdio},
-    sync::{Arc, Mutex, mpsc},
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    sync::{
+        Arc, Mutex, Weak,
+        atomic::{AtomicU64, Ordering},
+        mpsc,
+    },
+    time::{SystemTime, UNIX_EPOCH},
 };
 use str0m::unversioned::{Depacketizer, H264Depacketizer, Vp8Depacketizer};
 use tauri::ipc::{Channel, Response};
 
 pub type PacketSink = Arc<dyn Fn(RemoteVideoPacket) + Send + Sync>;
 struct Surface {
+    generation: u64,
     channel: Channel<Response>,
-    in_flight: Option<(u32, Instant)>,
+    in_flight: Option<u32>,
     next: u32,
     decoder: Option<mpsc::SyncSender<RemoteVideoPacket>>,
 }
 #[derive(Default)]
 pub struct VideoHub {
     surfaces: Mutex<HashMap<String, Surface>>,
+    next_surface: AtomicU64,
 }
 impl VideoHub {
     pub fn subscribe(&self, key: String, channel: Channel<Response>) -> Result<(), String> {
@@ -30,6 +36,7 @@ impl VideoHub {
         surfaces.insert(
             key,
             Surface {
+                generation: self.next_surface.fetch_add(1, Ordering::Relaxed),
                 channel,
                 in_flight: None,
                 next: 0,
@@ -49,28 +56,33 @@ impl VideoHub {
     }
     pub fn ack(&self, key: &str, id: u32) {
         if let Some(surface) = self.surfaces.lock().unwrap().get_mut(key)
-            && surface.in_flight.is_some_and(|(frame, _)| frame == id)
+            && surface.in_flight == Some(id)
         {
             surface.in_flight = None;
         }
     }
     pub fn raw(&self, key: &str, width: u32, height: u32, pixels: &[u8], sent_ms: f64) -> bool {
-        if pixels.len() != width as usize * height as usize * 4 {
+        if width == 0
+            || height == 0
+            || width > 3840
+            || height > 2160
+            || pixels.len() != width as usize * height as usize * 4
+        {
             return false;
         }
-        self.frame(key, width, height, pixels, sent_ms, 0)
+        self.frame(key, None, (width, height), pixels, sent_ms, 0)
     }
     pub fn jpeg(&self, key: &str, pixels: &[u8], sent_ms: f64) -> bool {
         let Some((width, height)) = jpeg_dimensions(pixels) else {
             return false;
         };
-        self.frame(key, width, height, pixels, sent_ms, 1)
+        self.frame(key, None, (width, height), pixels, sent_ms, 1)
     }
     fn frame(
         &self,
         key: &str,
-        width: u32,
-        height: u32,
+        generation: Option<u64>,
+        (width, height): (u32, u32),
         pixels: &[u8],
         sent_ms: f64,
         format: u32,
@@ -87,10 +99,10 @@ impl VideoHub {
         let Some(surface) = surfaces.get_mut(key) else {
             return false;
         };
-        if surface
-            .in_flight
-            .is_some_and(|(_, at)| at.elapsed() < Duration::from_millis(500))
-        {
+        if generation.is_some_and(|generation| generation != surface.generation) {
+            return false;
+        }
+        if surface.in_flight.is_some() {
             return false;
         }
         surface.next = surface.next.wrapping_add(1);
@@ -101,7 +113,7 @@ impl VideoHub {
         bytes.extend(format.to_le_bytes());
         bytes.extend(sent_ms.to_le_bytes());
         bytes.extend(pixels);
-        surface.in_flight = Some((surface.next, Instant::now()));
+        surface.in_flight = Some(surface.next);
         if surface.channel.send(Response::new(bytes)).is_err() {
             surfaces.remove(key);
             return false;
@@ -115,13 +127,15 @@ impl VideoHub {
             return;
         };
         if surface.decoder.is_none() {
+            tracing::debug!(%key, codec=packet.codec, "starting remote video decoder");
             let (tx, rx) = mpsc::sync_channel(128);
-            let hub = self.clone();
+            let hub = Arc::downgrade(self);
+            let generation = surface.generation;
             let worker_key = key.clone();
             if let Err(error) = std::thread::Builder::new()
                 .name("pingo-video".into())
                 .spawn(move || {
-                    if let Err(error) = decode(rx, hub, worker_key) {
+                    if let Err(error) = decode(rx, hub, worker_key, generation) {
                         tracing::warn!(%error, "native video decoder stopped");
                     }
                 })
@@ -229,8 +243,9 @@ fn ivf_header(frame: &[u8]) -> Option<Vec<u8>> {
 }
 fn decode(
     rx: mpsc::Receiver<RemoteVideoPacket>,
-    hub: Arc<VideoHub>,
+    hub: Weak<VideoHub>,
     key: String,
+    generation: u64,
 ) -> Result<(), String> {
     let first = rx.recv().map_err(|e| e.to_string())?;
     let codec = first.codec;
@@ -276,7 +291,10 @@ fn decode(
     let reader = std::thread::spawn(move || {
         let mut output = BufReader::new(output);
         while let Ok(Some(pixels)) = read_jpeg(&mut output) {
-            hub.jpeg(&key, &pixels, now_ms());
+            let Some(hub) = hub.upgrade() else { break };
+            if let Some(dimensions) = jpeg_dimensions(&pixels) {
+                hub.frame(&key, Some(generation), dimensions, &pixels, now_ms(), 1);
+            }
         }
     });
     let mut assembly = Assembly::default();
@@ -286,6 +304,7 @@ fn decode(
             break;
         }
         if let Some(frame) = assembly.push(&packet) {
+            tracing::trace!(codec, bytes = frame.len(), "assembled remote video frame");
             if codec == "vp8" {
                 if !initialized {
                     let Some(header) = ivf_header(&frame) else {
@@ -320,7 +339,11 @@ fn decode(
 pub(crate) fn read_jpeg(reader: &mut impl BufRead) -> std::io::Result<Option<Vec<u8>>> {
     let mut data = Vec::new();
     loop {
-        if reader.read_until(0xd9, &mut data)? == 0 {
+        if (&mut *reader)
+            .take((8 * 1024 * 1024 + 1 - data.len()) as u64)
+            .read_until(0xd9, &mut data)?
+            == 0
+        {
             return Ok(None);
         }
         if data.len() > 8 * 1024 * 1024 {
@@ -354,7 +377,7 @@ fn jpeg_dimensions(data: &[u8]) -> Option<(u32, u32)> {
             return None;
         }
         if [0xc0, 0xc1, 0xc2].contains(&marker) {
-            if length < 7 {
+            if length < 8 {
                 return None;
             }
             return Some((
@@ -401,6 +424,7 @@ pub(crate) fn read_pam(reader: &mut impl BufRead) -> std::io::Result<Option<(u32
 mod tests {
     use super::*;
     use pingo_proto::{TrackInfo, TrackKind};
+    use std::time::Duration;
     fn packet(sequence: u16, timestamp: u32, marker: bool, payload: Vec<u8>) -> RemoteVideoPacket {
         RemoteVideoPacket {
             track: TrackInfo {
@@ -424,6 +448,162 @@ mod tests {
         );
         assert!(a.push(&packet(3, 100, true, vec![0, 3])).is_none());
         assert!(a.push(&packet(4, 200, true, vec![0x10, 0, 1, 2])).is_some());
+    }
+    #[test]
+    fn truncated_jpeg_dimensions_are_rejected_without_indexing_past_input() {
+        // SOF length includes its length word, precision, dimensions and component count.
+        assert_eq!(
+            jpeg_dimensions(&[0xff, 0xd8, 0xff, 0xc0, 0, 7, 8, 0, 1, 0, 1]),
+            None
+        );
+    }
+    #[test]
+    fn binary_frames_are_bounded_acknowledged_and_isolated_from_replaced_decoders() {
+        let hub = VideoHub::default();
+        let (tx, rx) = mpsc::channel();
+        let channel = Channel::new(move |body| {
+            tx.send(body).unwrap();
+            Ok(())
+        });
+        hub.subscribe("session:mid".into(), channel.clone())
+            .unwrap();
+        let generation = hub.surfaces.lock().unwrap()["session:mid"].generation;
+        assert!(hub.raw("session:mid", 1, 1, &[1, 2, 3, 255], 100.0));
+        let tauri::ipc::InvokeResponseBody::Raw(frame) = rx.recv().unwrap() else {
+            panic!("binary channel required")
+        };
+        assert_eq!(frame.len(), 28);
+        let id = u32::from_le_bytes(frame[..4].try_into().unwrap());
+        assert!(!hub.raw("session:mid", 1, 1, &[0; 4], 100.0));
+        hub.ack("session:mid", id.wrapping_add(1));
+        assert!(!hub.raw("session:mid", 1, 1, &[0; 4], 100.0));
+        hub.ack("session:mid", id);
+        assert!(hub.raw("session:mid", 1, 1, &[0; 4], 100.0));
+        hub.subscribe("session:mid".into(), channel).unwrap();
+        assert!(!hub.frame("session:mid", Some(generation), (1, 1), &[0; 4], 100.0, 0));
+        hub.clear_session("session");
+        assert!(!hub.raw("session:mid", 1, 1, &[0; 4], 100.0));
+    }
+    #[test]
+    #[ignore = "requires ffmpeg with libx264/libvpx; run explicitly for native video verification"]
+    fn ffmpeg_decodes_live_h264_and_vp8_rtp_before_the_stream_closes() {
+        use str0m::unversioned::{H264Packetizer, Packetizer, Vp8Packetizer};
+        for codec in ["h264", "vp8"] {
+            let mut encode = Command::new("ffmpeg");
+            encode.args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-f",
+                "lavfi",
+                "-i",
+                "testsrc2=size=64x64:rate=30",
+                "-frames:v",
+                "90",
+                "-threads",
+                "1",
+            ]);
+            if codec == "h264" {
+                encode.args([
+                    "-c:v",
+                    "libx264",
+                    "-preset",
+                    "ultrafast",
+                    "-tune",
+                    "zerolatency",
+                    "-x264-params",
+                    "aud=1:repeat-headers=1:keyint=1",
+                    "-f",
+                    "h264",
+                ]);
+            } else {
+                encode.args([
+                    "-c:v",
+                    "libvpx",
+                    "-deadline",
+                    "realtime",
+                    "-g",
+                    "1",
+                    "-f",
+                    "ivf",
+                ]);
+            }
+            let output = encode.arg("pipe:1").output().unwrap();
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let frames: Vec<&[u8]> = if codec == "h264" {
+                let mut starts: Vec<_> = output
+                    .stdout
+                    .windows(5)
+                    .enumerate()
+                    .filter_map(|(i, b)| (b == [0, 0, 0, 1, 9]).then_some(i))
+                    .collect();
+                starts.push(output.stdout.len());
+                starts
+                    .windows(2)
+                    .map(|w| &output.stdout[w[0]..w[1]])
+                    .collect()
+            } else {
+                let mut frames = Vec::new();
+                let mut at = 32;
+                while at + 12 <= output.stdout.len() {
+                    let length =
+                        u32::from_le_bytes(output.stdout[at..at + 4].try_into().unwrap()) as usize;
+                    frames.push(&output.stdout[at + 12..at + 12 + length]);
+                    at += 12 + length;
+                }
+                frames
+            };
+            assert_eq!(frames.len(), 90);
+            let hub = Arc::new(VideoHub::default());
+            let (tx, rx) = mpsc::channel();
+            hub.subscribe(
+                "session:v".into(),
+                Channel::new(move |body| {
+                    let _ = tx.send(body);
+                    Ok(())
+                }),
+            )
+            .unwrap();
+            let mut packetizer: Box<dyn Packetizer> = if codec == "h264" {
+                Box::new(H264Packetizer::default())
+            } else {
+                Box::new(Vp8Packetizer::default())
+            };
+            let mut sequence = 0u16;
+            let mut decoded = None;
+            for (index, frame) in frames.iter().enumerate() {
+                let packets = packetizer.packetize(1200, frame).unwrap();
+                for (i, payload) in packets.iter().enumerate() {
+                    let mut packet = packet(
+                        sequence,
+                        index as u32 * 3000,
+                        i + 1 == packets.len(),
+                        payload.clone(),
+                    );
+                    packet.codec = codec;
+                    hub.push("session", packet);
+                    sequence = sequence.wrapping_add(1);
+                }
+                std::thread::sleep(Duration::from_millis(10));
+                if let Ok(body) = rx.try_recv() {
+                    decoded = Some(body);
+                    break;
+                }
+            }
+            let body = decoded.or_else(|| rx.recv_timeout(Duration::from_secs(5)).ok());
+            // Keep the sender open until here: EOF must not be needed to flush a live frame.
+            hub.clear_session("session");
+            let Some(tauri::ipc::InvokeResponseBody::Raw(bytes)) = body else {
+                panic!("{codec}: no decoded binary frame before EOF")
+            };
+            assert_eq!(u32::from_le_bytes(bytes[4..8].try_into().unwrap()), 64);
+            assert_eq!(u32::from_le_bytes(bytes[8..12].try_into().unwrap()), 64);
+            assert_eq!(jpeg_dimensions(&bytes[24..]), Some((64, 64)));
+        }
     }
     #[test]
     fn pam_validates_allocation_and_reads_rgba() {
