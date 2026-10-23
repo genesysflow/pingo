@@ -6,5 +6,5 @@
 pub mod signal;
 pub mod token;
 
-pub use signal::{ClientMsg, DataMsg, ParticipantInfo, ServerMsg, TrackKind, TrackInfo};
+pub use signal::{ClientMsg, DataMsg, ParticipantInfo, ServerMsg, TrackInfo, TrackKind};
 pub use token::{MediaClaims, TokenError};
