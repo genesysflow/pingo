@@ -338,3 +338,64 @@ fn signaling_rejects_unsolicited_answers_and_tracks_cleanup() {
         r#"{"type":"join","token":"test-token"}"#
     );
 }
+
+#[test]
+fn publication_changes_during_pending_offers_are_not_lost() {
+    let now = Instant::now();
+    let mut client = Session::new(now, &[], AudioSettings::default()).unwrap();
+    let mut peer = Rtc::builder()
+        .clear_codecs()
+        .enable_opus(true, false)
+        .build(now);
+    client
+        .signal(ServerMsg::Joined {
+            participant_id: "self".into(),
+            participants: vec![],
+        })
+        .unwrap();
+    let Some(ClientMsg::Offer { sdp }) = client.next_signal() else {
+        panic!("initial offer");
+    };
+    assert!(
+        matches!(client.next_signal(), Some(ClientMsg::PublishTracks { tracks }) if tracks.len() == 1)
+    );
+    client.set_audio_published(false).unwrap();
+    assert!(
+        client.next_signal().is_none(),
+        "must wait for pending answer"
+    );
+    let answer = peer
+        .sdp_api()
+        .accept_offer(SdpOffer::from_sdp_string(&sdp).unwrap())
+        .unwrap();
+    client
+        .signal(ServerMsg::Answer {
+            sdp: answer.to_sdp_string(),
+        })
+        .unwrap();
+    let Some(ClientMsg::Offer { sdp }) = client.next_signal() else {
+        panic!("deferred unpublish offer");
+    };
+    assert!(sdp.contains("a=inactive"));
+    assert!(
+        matches!(client.next_signal(), Some(ClientMsg::PublishTracks { tracks }) if tracks.is_empty())
+    );
+    client.set_audio_published(true).unwrap();
+    assert!(client.next_signal().is_none());
+    let answer = peer
+        .sdp_api()
+        .accept_offer(SdpOffer::from_sdp_string(&sdp).unwrap())
+        .unwrap();
+    client
+        .signal(ServerMsg::Answer {
+            sdp: answer.to_sdp_string(),
+        })
+        .unwrap();
+    let Some(ClientMsg::Offer { sdp }) = client.next_signal() else {
+        panic!("deferred republish offer");
+    };
+    assert!(sdp.contains("a=sendonly") && sdp.contains("maxaveragebitrate=256000"));
+    assert!(
+        matches!(client.next_signal(), Some(ClientMsg::PublishTracks { tracks }) if tracks.len() == 1)
+    );
+}

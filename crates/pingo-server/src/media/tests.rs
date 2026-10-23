@@ -35,6 +35,10 @@ struct Server {
 
 impl Server {
     async fn start(dev: bool) -> Self {
+        Self::start_udp(dev, "127.0.0.1:0").await
+    }
+
+    async fn start_udp(dev: bool, udp_bind: &str) -> Self {
         let t = TestApp::with_options(rxferrix::AppOptions {
             dev,
             ..Default::default()
@@ -73,7 +77,8 @@ impl Server {
             .unwrap()
             .access_token;
         let media = Media::new(SfuConfig {
-            udp_bind: "127.0.0.1:0".parse().unwrap(),
+            udp_bind: udp_bind.parse().unwrap(),
+            public_ips: vec!["127.0.0.1".parse().unwrap()],
             ..Default::default()
         });
         let router = rxferrix::ops::web::router(
@@ -513,3 +518,5 @@ async fn production_admission_fails_closed_when_secret_is_missing_or_removed() {
     let _ = ws.close(None).await;
     dev.stop().await;
 }
+
+mod native;

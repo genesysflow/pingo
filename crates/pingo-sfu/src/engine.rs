@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet};
-use std::net::IpAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
@@ -338,6 +338,7 @@ pub(crate) struct Engine {
     cfg: SfuConfig,
     socket: UdpSocket,
     ips: Vec<IpAddr>,
+    udp_routes: HashMap<SocketAddr, SocketAddr>,
     rooms: HashMap<String, Room>,
     locations: HashMap<String, String>,
     counters: Arc<Counters>,
@@ -382,6 +383,7 @@ impl Engine {
             cfg,
             socket,
             ips,
+            udp_routes: HashMap::new(),
             rooms: HashMap::new(),
             locations: HashMap::new(),
             counters,
@@ -468,8 +470,20 @@ impl Engine {
                 received = self.socket.recv_from(&mut buffer) => {
                     if let Ok((len, source)) = received {
                         let Ok(contents) = buffer[..len].try_into() else { continue; };
-                        let input = Input::Receive(Instant::now(), Receive { proto: Protocol::Udp, source, destination: self.socket.local_addr().expect("bound socket"), contents });
+                        let bound = self.socket.local_addr().expect("bound socket");
+                        let mut input = Input::Receive(Instant::now(), Receive { proto: Protocol::Udp, source, destination: bound, contents });
                         if let Some(peer) = self.rooms.values_mut().flat_map(|r| r.peers.values_mut()).find(|p| p.rtc.accepts(&input)) {
+                            // recv_from on a wildcard socket reports no destination IP.
+                            // ICE must see an advertised candidate, never 0.0.0.0/::.
+                            // Resolve only authenticated/demultiplexed peers and bound the cache.
+                            if bound.ip().is_unspecified() {
+                                let destination = self.udp_routes.get(&source).copied().unwrap_or_else(|| {
+                                    let destination = udp_destination(bound, source, &self.ips);
+                                    if self.udp_routes.len() < 1024 { self.udp_routes.insert(source, destination); }
+                                    destination
+                                });
+                                if let Input::Receive(_, receive) = &mut input { receive.destination = destination; }
+                            }
                             self.counters.bytes_in.fetch_add(len as u64, Ordering::Relaxed);
                             // ICE keepalives count as activity, as do encrypted media/data packets.
                             if peer.rtc.handle_input(input).is_ok() { peer.last_seen = Instant::now(); } else { peer.dead = true; }
@@ -763,6 +777,23 @@ fn verify_join(value: &str, secret: &[u8]) -> Result<MediaClaims, String> {
         return Err("invalid media claims".into());
     }
     Ok(claims)
+}
+
+// Prefer the local route when advertised. Behind NAT the public candidate is
+// a logical address on this same socket, so use it when the route is private.
+fn udp_destination(bound: SocketAddr, source: SocketAddr, ips: &[IpAddr]) -> SocketAddr {
+    let route = (|| -> std::io::Result<IpAddr> {
+        let probe = std::net::UdpSocket::bind(if source.is_ipv4() {
+            "0.0.0.0:0"
+        } else {
+            "[::]:0"
+        })?;
+        probe.connect(source)?;
+        Ok(probe.local_addr()?.ip())
+    })()
+    .ok();
+    let ip = route.filter(|ip| ips.contains(ip)).unwrap_or(ips[0]);
+    SocketAddr::new(ip, bound.port())
 }
 
 #[cfg(test)]

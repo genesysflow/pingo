@@ -7,7 +7,7 @@ license.workspace = true
 publish.workspace = true
 
 [features]
-default = []
+default = ["webrtc-apm"]
 webrtc-apm = ["dep:webrtc-audio-processing"]
 # The published deep_filter crate has DSP primitives but no inference/model loader.
 deepfilter = ["dep:deep_filter"]

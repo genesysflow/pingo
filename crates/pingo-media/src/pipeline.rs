@@ -120,9 +120,12 @@ impl SendPipeline {
             + jitter_ms
             + 10.0)
     }
+    pub fn set_stream_delay_ms(&mut self, delay_ms: Option<u16>) {
+        self.apm.set_stream_delay_ms(delay_ms);
+    }
     pub fn render_reference(&mut self, frame: &StereoFrame) -> Result<()> {
         if self.settings.profile == Profile::Voice {
-            self.apm.render(&frame.map(|s| (s[0] + s[1]) * 0.5))?;
+            self.apm.render_stereo(frame)?;
         }
         Ok(())
     }
