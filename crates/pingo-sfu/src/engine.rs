@@ -465,10 +465,10 @@ impl Engine {
                     Some(command) => self.command(command),
                     None => break,
                 },
-                received = self.socket.recv_from(&mut buffer) => {
-                    if let Ok((len, source)) = received {
+                received = crate::socket::receive(&self.socket, &mut buffer, &self.ips) => {
+                    if let Ok((len, source, destination)) = received {
                         let Ok(contents) = buffer[..len].try_into() else { continue; };
-                        let input = Input::Receive(Instant::now(), Receive { proto: Protocol::Udp, source, destination: self.socket.local_addr().expect("bound socket"), contents });
+                        let input = Input::Receive(Instant::now(), Receive { proto: Protocol::Udp, source, destination, contents });
                         if let Some(peer) = self.rooms.values_mut().flat_map(|r| r.peers.values_mut()).find(|p| p.rtc.accepts(&input)) {
                             self.counters.bytes_in.fetch_add(len as u64, Ordering::Relaxed);
                             // ICE keepalives count as activity, as do encrypted media/data packets.

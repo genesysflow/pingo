@@ -6,6 +6,7 @@
 mod engine;
 mod policy;
 mod session;
+mod socket;
 
 use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
@@ -124,6 +125,7 @@ impl Sfu {
             return Err(SfuError::Config("media_secret must not be empty".into()));
         }
         let socket = UdpSocket::bind(cfg.udp_bind).await?;
+        socket::enable_destination(&socket)?;
         let udp_addr = socket.local_addr()?;
         let ips = advertised_ips(&cfg, udp_addr)?;
         let (commands, rx) = mpsc::channel(512);

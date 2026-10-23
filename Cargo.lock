@@ -2987,6 +2987,7 @@ dependencies = [
  "clap",
  "futures-util",
  "if-addrs",
+ "nix",
  "pingo-proto",
  "serde_json",
  "str0m",

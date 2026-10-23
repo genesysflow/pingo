@@ -60,6 +60,9 @@ struct Server {
 }
 impl Server {
     async fn start() -> Self {
+        Self::with_bind("127.0.0.1:0", vec![]).await
+    }
+    async fn with_bind(bind: &str, public_ips: Vec<std::net::IpAddr>) -> Self {
         let _ = tracing_subscriber::fmt()
             .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
             .try_init();
@@ -67,8 +70,8 @@ impl Server {
         let sfu = Sfu::start(
             SfuConfig {
                 media_secret: SECRET.to_vec(),
-                udp_bind: "127.0.0.1:0".parse().unwrap(),
-                public_ips: vec![],
+                udp_bind: bind.parse().unwrap(),
+                public_ips,
                 ..Default::default()
             },
             Arc::new(Hooks(tx)),
@@ -583,4 +586,27 @@ async fn forwards_vp8_and_h264_simulcast_and_switches_subscriber_quality() {
         b.stop().await;
         server.stop().await;
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wildcard_udp_with_explicit_public_candidates_completes_ice_and_forwards_opus() {
+    // Two loopback destinations catch implementations that pick the first advertised IP.
+    let server = Server::with_bind(
+        "0.0.0.0:0",
+        vec!["127.0.0.2".parse().unwrap(), "127.0.0.1".parse().unwrap()],
+    )
+    .await;
+    let mut a = Client::join(server.address, claims("wildcard-alice", "wildcard"), true).await;
+    let mut b = Client::join(server.address, claims("wildcard-bob", "wildcard"), false).await;
+    a.ready().await;
+    b.ready().await;
+    b.wait(
+        |event| matches!(event, ClientEvent::Media { data, level: Some(-10), .. } if data == OPUS),
+    )
+    .await;
+    assert!(server.sfu.stats().bytes_in > 0);
+    assert!(server.sfu.stats().bytes_out > 0);
+    a.stop().await;
+    b.stop().await;
+    server.stop().await;
 }
