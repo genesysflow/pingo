@@ -1,0 +1,8 @@
+/** Mirrors crates/pingo-proto/src/signal.rs. Ephemeral data belongs on the media channel. */
+export type TrackKind = 'audio' | 'camera' | 'screen' | 'screenAudio';
+export interface ParticipantInfo { participantId: string; user: string; name: string; color: string; muted: boolean; deafened: boolean }
+export interface TrackInfo { participantId: string; mid: string; kind: TrackKind }
+export interface PublishedTrack { mid: string; kind: TrackKind }
+export type ClientMsg = { type: 'join'; token: string } | { type: 'offer' | 'answer'; sdp: string } | { type: 'publishTracks'; tracks: PublishedTrack[] } | { type: 'setState'; muted: boolean; deafened: boolean } | { type: 'setVideoQuality'; mid: string; maxHeight: number } | { type: 'ping' };
+export type ServerMsg = { type: 'joined'; participantId: string; participants: ParticipantInfo[] } | { type: 'offer' | 'answer'; sdp: string } | { type: 'participantJoined' | 'participantUpdated'; participant: ParticipantInfo } | { type: 'participantLeft'; participantId: string } | { type: 'trackPublished'; track: TrackInfo } | { type: 'trackUnpublished'; participantId: string; mid: string } | { type: 'error'; code: string; message: string } | { type: 'pong' };
+export type DataMsg = { type: 'speaking'; participantId: string; level: number } | { type: 'reaction'; participantId: string; emoji: string } | { type: 'raiseHand'; participantId: string; raised: boolean } | { type: 'pointer'; participantId: string; shareMid: string; pos: [number, number] | null } | { type: 'stroke'; participantId: string; shareMid: string; points: [number, number][]; color: string };
