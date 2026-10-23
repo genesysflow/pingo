@@ -3,9 +3,10 @@ import { backend, startDemoActivity, setupMock } from './hooks.svelte';
 import { useMutation, useAuth, api, isDemo } from './index';
 import { MockCallController } from '../call/controller.svelte';
 import { BrowserCallController } from '../call/browser.svelte';
+import { serverOrigin } from '../desktop/bridge';
 export function initializeData() {
   if (isDemo) setupMock();
-  else setupRxFerrix(location.origin);
+  else setupRxFerrix(serverOrigin());
 }
 export function createCall() {
   const join = useMutation(api.voice.join);

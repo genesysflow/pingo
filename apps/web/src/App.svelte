@@ -27,6 +27,8 @@
   import Auth from './lib/components/Auth.svelte';
   import RoomSettings from './lib/components/RoomSettings.svelte';
   import Modal from './lib/components/Modal.svelte';
+  import { nativeDesktop } from './lib/desktop/bridge';
+  import DesktopEvents from './lib/desktop/DesktopEvents.svelte';
   initializeData();
   const auth = useAuth(),
     call = createCall();
@@ -296,6 +298,8 @@
     };
   });
 </script>
+
+{#if nativeDesktop}<DesktopEvents />{/if}
 
 <svelte:window
   onkeydown={keyboard}
