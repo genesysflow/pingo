@@ -175,3 +175,8 @@ receive default, and client mute left old audio running through PLC. The SFU
 now advertises stereo explicitly (and a 256 kbps receive ceiling, which str0m
 0.24 cannot represent in FormatParams); the client drops queued audio and
 silences the mix on authoritative participant mute updates.
+
+The three-party case joins a third authenticated member and sends independent
+440/880 Hz Voice streams. B's mixed output must contain both narrow-band peaks
+(and no comparable 600 Hz peak), with two independent playout buffers. Measured
+amplitudes were 0.115/0.095, delays 28.3–29.8 ms, and zero loss/concealment.

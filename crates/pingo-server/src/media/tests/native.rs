@@ -317,3 +317,78 @@ async fn native_studio_through_embedded_server() {
         .run_until(two_clients(Profile::Studio))
         .await;
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_three_party_mix_contains_both_publishers() {
+    LocalSet::new()
+        .run_until(async {
+            let server = Server::start(true).await;
+            let cara = server
+                .t
+                .create_user("cara@example.com", None)
+                .await
+                .unwrap();
+            let invite = server
+                .t
+                .as_user(server.ann)
+                .mutation::<crate::invites::create>((server.space, None, None))
+                .await
+                .unwrap();
+            server
+                .t
+                .as_user(cara)
+                .mutation::<crate::invites::accept>((invite,))
+                .await
+                .unwrap();
+            let cara_auth = server
+                .t
+                .app()
+                .auth()
+                .sign_in_as(server.t.app(), cara)
+                .await
+                .unwrap()
+                .access_token;
+            let a = Native::join(&server, &server.ann_auth, Profile::Voice).await;
+            let a_id = a.id();
+            let mut b = Native::join(&server, &server.bob_auth, Profile::Voice).await;
+            b.wait(|e| matches!(e, RtcEvent::TrackPublished(t) if t.participant_id == a_id))
+                .await;
+            let c = Native::join(&server, &cara_auth, Profile::Voice).await;
+            let c_id = c.id();
+            b.wait(|e| matches!(e, RtcEvent::TrackPublished(t) if t.participant_id == c_id))
+                .await;
+            server.wait_participants(|rows| rows.len() == 3).await;
+            let (feed_a, _) = feed(a.commands.clone(), 440.0, Profile::Voice, false);
+            let (feed_c, _) = feed(c.commands.clone(), 880.0, Profile::Voice, false);
+            let frames = b.record(Duration::from_millis(2400)).await;
+            let mix: Vec<_> = frames
+                .iter()
+                .skip(100)
+                .flat_map(|f| f.frame.iter().map(|s| s[0]))
+                .collect();
+            let a_amp = amplitude(&mix, 440.0);
+            let c_amp = amplitude(&mix, 880.0);
+            assert!(
+                a_amp > 0.04 && c_amp > 0.04,
+                "missing publisher: 440 Hz={a_amp:.3}, 880 Hz={c_amp:.3}"
+            );
+            assert!(
+                amplitude(&mix, 600.0) < 0.01,
+                "broadband noise is not a successful mix"
+            );
+            println!(
+                "Three-party mix: 440 Hz={a_amp:.3}, 880 Hz={c_amp:.3}; {:?}",
+                b.stats()
+            );
+            assert_eq!(b.stats().len(), 2);
+            feed_a.abort();
+            feed_c.abort();
+            let _ = feed_a.await;
+            let _ = feed_c.await;
+            a.stop().await;
+            c.stop().await;
+            b.stop().await;
+            server.stop().await;
+        })
+        .await;
+}
