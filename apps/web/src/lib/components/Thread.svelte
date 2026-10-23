@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, useQuery } from '../data';
+  import { api, useQuery, errorMessage } from '../data';
   import Icon from './Icon.svelte';
   import Message from './Message.svelte';
   import Composer from './Composer.svelte';
@@ -21,7 +21,7 @@
       {#each thread.data.replies as message (message._id)}<Message
           {message}
           narrow
-        />{/each}{:else if thread.error}<p class="error">{thread.error.message}</p>{/if}
+        />{/each}{:else if thread.error}<p class="error">{errorMessage(thread.error)}</p>{/if}
   </div>
   {#if thread.data}{#key root}<Composer
         room={thread.data.root.room}

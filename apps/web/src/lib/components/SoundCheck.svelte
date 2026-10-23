@@ -73,7 +73,7 @@
     } catch (e) {
       error =
         e instanceof Error && e.name === 'NotAllowedError'
-          ? 'Microphone permission was declined. You can still explore the demo and check your sound later.'
+          ? 'Microphone permission was declined. Allow microphone access in your browser settings, then try again.'
           : `Couldn’t open the microphone. ${e instanceof Error ? e.message : ''}`;
     }
   }

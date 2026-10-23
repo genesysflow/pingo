@@ -1,7 +1,8 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { api, useQuery, type RoomSummary } from '../data';
+  import { api, useQuery, isDemo, type RoomSummary } from '../data';
   import type { CallController } from '../call/controller.svelte';
+  import CallVideo from './CallVideo.svelte';
   import Avatar from './Avatar.svelte';
   import Icon from './Icon.svelte';
   let {
@@ -17,6 +18,10 @@
     isDrawing = false,
     stroke: [number, number][] = [],
     share = $state<HTMLDivElement>()!;
+  const screen = $derived(call.media.find((m) => m.kind === 'screen'));
+  const screenStream = $derived(screen?.stream ?? call.localScreen);
+  const screenMid = $derived(screen?.mid ?? call.screenMid);
+  const hasShare = $derived(!!screenStream || call.sharing);
   const seconds = $derived(Math.max(0, Math.floor((call.clock - call.startedAt) / 1000)));
   function position(e: PointerEvent): [number, number] {
     const r = share.getBoundingClientRect();
@@ -27,26 +32,27 @@
   }
   function move(e: PointerEvent) {
     const pos = position(e);
-    call.send({ type: 'pointer', participantId: 'you', shareMid: 'demo-screen', pos });
+    call.send({ type: 'pointer', participantId: call.userId, shareMid: screenMid, pos });
     if (isDrawing) {
       stroke.push(pos);
       if (stroke.length > 1)
         call.send({
           type: 'stroke',
-          participantId: 'you',
-          shareMid: 'demo-screen',
+          participantId: call.userId,
+          shareMid: screenMid,
           points: stroke.slice(-2),
           color: '#a889ed',
         });
     }
   }
   onMount(() => {
+    if (!isDemo) return;
     const timer = setInterval(() => {
       if (call.sharing) {
         call.send({
           type: 'pointer',
           participantId: 'maya',
-          shareMid: 'demo-screen',
+          shareMid: screenMid,
           pos: [0.58 + Math.sin(Date.now() / 3000) * 0.1, 0.6 + Math.cos(Date.now() / 4000) * 0.08],
         });
       }
@@ -56,6 +62,15 @@
 </script>
 
 <div class="stage-view">
+  {#if call.connection !== 'connected'}<p role="status">
+      {call.connection === 'reconnecting'
+        ? 'Reconnecting to your people…'
+        : call.connection === 'failed'
+          ? 'Call disconnected'
+          : 'Connecting…'}
+    </p>{/if}
+  {#if call.error}<p class="error" role="alert">{call.error}</p>
+    <button class="button small" onclick={() => call.resumeAudio()}>Resume call audio</button>{/if}
   <div class="stage-intro">
     <div>
       <span class="eyebrow"><span class="live-dot"></span> A LITTLE CLOSER</span>
@@ -75,10 +90,10 @@
       ><Icon name="external" size={15} />Pop out</button
     >
   </div>
-  {#if call.sharing}<div class="screen-share-header">
+  {#if hasShare}<div class="screen-share-header">
       <span
-        ><Icon name="share" size={15} />You’re sharing a preview<span class="muted"
-          >· Point to show, draw to explain</span
+        ><Icon name="share" size={15} />{call.sharing ? 'You’re sharing your screen' : 'Shared screen'}<span
+          class="muted">· Point to show, draw to explain</span
         ></span
       >
       <div class="segmented">
@@ -115,17 +130,17 @@
       onpointercancel={() => (isDrawing = false)}
       onpointerleave={() => {
         if (!isDrawing)
-          call.send({ type: 'pointer', participantId: 'you', shareMid: 'demo-screen', pos: null });
+          call.send({ type: 'pointer', participantId: call.userId, shareMid: screenMid, pos: null });
       }}
       onkeydown={(e) => {
         if (e.key === 'Enter') {
-          call.send({ type: 'pointer', participantId: 'you', shareMid: 'demo-screen', pos: [0.5, 0.5] });
+          call.send({ type: 'pointer', participantId: call.userId, shareMid: screenMid, pos: [0.5, 0.5] });
         }
         if (e.key === 'd')
           call.send({
             type: 'stroke',
-            participantId: 'you',
-            shareMid: 'demo-screen',
+            participantId: call.userId,
+            shareMid: screenMid,
             points: [
               [0.4, 0.6],
               [0.5, 0.5],
@@ -135,12 +150,20 @@
           });
       }}
     >
-      <div class="screen-browser">
-        <i></i><i></i><i></i><span>fieldwork.design / a-new-chapter</span><Icon name="lock" size={10} />
-      </div>
-      <img src="/direction.svg" alt="Fieldwork design preview: A little room to grow" draggable="false" />
+      {#if screenStream}{#key screenStream}<CallVideo
+            stream={screenStream}
+            mid={screen?.mid}
+            {call}
+          />{/key}{:else}<div class="screen-browser">
+          <i></i><i></i><i></i><span>fieldwork.design / a-new-chapter</span><Icon name="lock" size={10} />
+        </div>
+        <img
+          src="/direction.svg"
+          alt="Fieldwork design preview: A little room to grow"
+          draggable="false"
+        />{/if}
       <svg class="annotations" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true"
-        >{#each call.strokes as s (s.id)}<polyline
+        >{#each call.strokes.filter((s) => s.shareMid === screenMid) as s (s.id)}<polyline
             points={s.points.map((p) => `${p[0] * 1000},${p[1] * 1000}`).join(' ')}
             fill="none"
             stroke={s.color}
@@ -149,24 +172,32 @@
             class="annotation-stroke"
           />{/each}</svg
       >
-      {#each Object.entries(call.pointers) as [user, pointer]}<span
+      {#each Object.entries(call.pointers).filter(([, p]) => p.shareMid === screenMid) as [user, pointer]}<span
           class="share-pointer"
           style:left={`${pointer.pos.x * 100}%`}
           style:top={`${pointer.pos.y * 100}%`}
           ><span></span><strong
-            >{user === 'you'
+            >{user === call.userId
               ? 'You'
               : (participants.data?.find((p) => p.user === user)?.name.split(' ')[0] ?? user)}</strong
           ></span
         >{/each}
     </div>{/if}
-  <div class="stage-tiles" class:with-share={call.sharing} class:has-spotlight={!!spotlight}>
-    {#each participants.data ?? [] as p (p.user)}<div
+  <div class="stage-tiles" class:with-share={hasShare} class:has-spotlight={!!spotlight}>
+    {#each participants.data ?? [] as p (p.user)}
+      {@const camera = call.media.find((m) => m.user === p.user && m.kind === 'camera')}
+      <div
         class="stage-tile"
         class:spotlight={spotlight === p.user}
         class:speaking={(call.levels[p.user] ?? 0) > 0.4 && !p.muted}
         style:--tile-color={p.color}
       >
+        {#if camera}{#key camera.stream}<CallVideo
+              stream={camera.stream}
+              mid={camera.mid}
+              {call}
+              label={`${p.name}'s camera`}
+            />{/key}{/if}
         <button
           class="tile-main"
           aria-label={`Spotlight ${p.name}`}
@@ -174,14 +205,16 @@
           ><Avatar
             name={p.name}
             color={p.color}
-            size={call.sharing ? 50 : spotlight === p.user ? 100 : 78}
+            size={hasShare ? 50 : spotlight === p.user ? 100 : 78}
             speaking={(call.levels[p.user] ?? 0) > 0.4 && !p.muted}
           /></button
         >
         <div class="tile-label">
-          <strong>{p.name}{p.user === 'you' ? ' (you)' : ''}</strong>{#if call.raised.includes(p.user)}<span
-              >✋</span
-            >{/if}{#if p.muted}<Icon name="micOff" size={14} />{:else}<span class="audio-bars"
+          <strong>{p.name}{p.user === call.userId ? ' (you)' : ''}</strong
+          >{#if call.raised.includes(p.user)}<span>✋</span>{/if}{#if p.muted}<Icon
+              name="micOff"
+              size={14}
+            />{:else}<span class="audio-bars"
               >{#each [0, 1, 2, 3] as i}<i
                   style:height={`${4 + (call.levels[p.user] ?? 0) * (i % 2 ? 16 : 10)}px`}
                 ></i>{/each}</span
@@ -203,7 +236,7 @@
     {#each call.reactions as r (r.id)}<span
         class="floating-reaction"
         style:left={`${20 + ((r.id * 19) % 60)}%`}
-        >{r.emoji}<small>{r.user === 'you' ? 'You' : r.user}</small></span
+        >{r.emoji}<small>{r.user === call.userId ? 'You' : (participants.data?.find(p => p.user === r.user)?.name ?? 'Someone')}</small></span
       >{/each}
   </div>
   <div class="stage-bottom">
@@ -228,12 +261,15 @@
         aria-label={call.sharing ? 'Stop sharing' : 'Share your screen'}
         onclick={() => call.toggleShare()}><Icon name="share" /></button
       ><button
-        class:control-on={call.raised.includes('you')}
+        class:control-on={call.raised.includes(call.userId)}
         aria-label="Raise hand"
-        aria-pressed={call.raised.includes('you')}
+        aria-pressed={call.raised.includes(call.userId)}
         onclick={() =>
-          call.send({ type: 'raiseHand', participantId: 'you', raised: !call.raised.includes('you') })}
-        ><Icon name="hand" /></button
+          call.send({
+            type: 'raiseHand',
+            participantId: call.userId,
+            raised: !call.raised.includes(call.userId),
+          })}><Icon name="hand" /></button
       ><button
         class="leave-control"
         aria-label="Leave this call"
@@ -242,11 +278,16 @@
           collapse();
         }}><Icon name="leave" /></button
       >
+      <button
+        class:control-on={call.camera}
+        aria-label={call.camera ? 'Turn camera off' : 'Turn camera on'}
+        onclick={() => call.toggleCamera()}><Icon name="video" /></button
+      >
     </div>
     <div class="stage-emoji">
       {#each ['💜', '✨', '🙌', '😂'] as em}<button
           aria-label={`Send ${em} in call`}
-          onclick={() => call.send({ type: 'reaction', participantId: 'you', emoji: em })}>{em}</button
+          onclick={() => call.send({ type: 'reaction', participantId: call.userId, emoji: em })}>{em}</button
         >{/each}
     </div>
   </div>

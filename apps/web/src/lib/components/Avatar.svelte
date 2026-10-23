@@ -6,7 +6,15 @@
     size = 36,
     status,
     speaking = false,
-  }: { name: string; color?: string; size?: number; status?: string; speaking?: boolean } = $props();
+    url,
+  }: {
+    name: string;
+    color?: string;
+    size?: number;
+    status?: string;
+    speaking?: boolean;
+    url?: string;
+  } = $props();
 </script>
 
 <span
@@ -17,6 +25,10 @@
   title={name}
   aria-label={`${name}${status ? `, ${status}` : ''}`}
 >
-  <span>{initials(name)}</span>
+  {#if url}<img
+      src={url}
+      alt=""
+      style="width:100%;height:100%;object-fit:cover;border-radius:inherit"
+    />{:else}<span>{initials(name)}</span>{/if}
   {#if status}<i class="presence {status}"></i>{/if}
 </span>

@@ -1,18 +1,27 @@
-// Mock-only bootstrap. Production replaces this file with RxFerrix context and a real CallController.
-import { useMutation, backend, startDemoActivity, setupMock } from './hooks.svelte';
-import { api } from './mock-api';
-import { setupRxFerrix } from '@rxferrix/svelte';
-import { isDemo } from './index';
+import { setupRxFerrix, getRxFerrixClient } from '@rxferrix/svelte';
+import { backend, startDemoActivity, setupMock } from './hooks.svelte';
+import { useMutation, useAuth, api, isDemo } from './index';
 import { MockCallController } from '../call/controller.svelte';
-export function initializeDemo() {
+import { BrowserCallController } from '../call/browser.svelte';
+export function initializeData() {
   if (isDemo) setupMock();
   else setupRxFerrix(location.origin);
 }
-export function createDemoCall() {
+export function createCall() {
   const join = useMutation(api.voice.join);
-  return new MockCallController(
+  const auth = useAuth();
+  if (isDemo)
+    return new MockCallController(
+      (room) => join({ room }),
+      (room, state) => backend.updateCall(room, state),
+    );
+  const client = getRxFerrixClient();
+  return new BrowserCallController(
     (room) => join({ room }),
-    (room, state) => backend.updateCall(room, state),
+    (room) => client.query(api.rooms.get, { room }),
+    () => auth.userId ?? '',
   );
 }
-export function startActivity() { return isDemo ? startDemoActivity() : () => {}; }
+export function startActivity() {
+  return isDemo ? startDemoActivity() : () => {};
+}
