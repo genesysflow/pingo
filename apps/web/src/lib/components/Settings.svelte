@@ -1,0 +1,308 @@
+<script lang="ts">
+  import { untrack } from 'svelte';
+  import { api, useQuery, useMutation, useAuth, type PresenceStatus } from '../data';
+  import type { CallController } from '../call/controller.svelte';
+  import Icon from './Icon.svelte';
+  import Avatar from './Avatar.svelte';
+  let {
+    page = 'Appearance',
+    theme,
+    density,
+    space,
+    call,
+    setTheme,
+    setDensity,
+    back,
+    sound,
+    notice,
+  }: {
+    page?: string;
+    theme: string;
+    density: string;
+    space: string;
+    call: CallController;
+    setTheme: (v: string) => void;
+    setDensity: (v: string) => void;
+    back: () => void;
+    sound: () => void;
+    notice: (text: string) => void;
+  } = $props();
+  const me = useQuery(api.profiles.me),
+    info = useQuery(api.spaces.get, () => ({ space }));
+  const updateProfile = useMutation(api.profiles.update),
+    status = useMutation(api.presence.setStatus),
+    updateSpace = useMutation(api.spaces.update),
+    createInvite = useMutation(api.invites.create),
+    auth = useAuth();
+  let profileName = $state(''),
+    statusText = $state(''),
+    profileColor = $state('#b9a2e7'),
+    spaceName = $state(''),
+    accent = $state('#8064cc'),
+    invite = $state(''),
+    tab = $state(untrack(() => page)),
+    error = $state('');
+  let desktop = $state(localStorage.getItem('pingo-notify-desktop') !== 'false'),
+    sounds = $state(localStorage.getItem('pingo-notify-sounds') === 'true'),
+    mentions = $state(localStorage.getItem('pingo-notify-mentions') !== 'false');
+  $effect(() => {
+    if (me.data) {
+      profileName = me.data.name;
+      profileColor = me.data.color;
+      statusText = me.data.statusText;
+    }
+  });
+  $effect(() => {
+    if (info.data) {
+      spaceName = info.data.name;
+      accent = info.data.accent;
+    }
+  });
+  async function save() {
+    error = '';
+    try {
+      if (tab === 'Profile') {
+        await updateProfile({ name: profileName, color: profileColor });
+        await status({ status: me.data?.status ?? 'online', text: statusText });
+      } else if (tab === 'Space') await updateSpace({ space, name: spaceName, accent });
+      notice('A little more you. Changes saved.');
+    } catch (e) {
+      error = (e as Error).message;
+    }
+  }
+  async function notificationChange() {
+    localStorage.setItem('pingo-notify-desktop', String(desktop));
+    localStorage.setItem('pingo-notify-sounds', String(sounds));
+    localStorage.setItem('pingo-notify-mentions', String(mentions));
+    if (desktop && 'Notification' in window && Notification.permission === 'default') {
+      const permission = await Notification.requestPermission();
+      if (permission !== 'granted')
+        notice('Notifications are saved as a preference. Allow them in your browser to receive alerts.');
+    }
+  }
+  const shortcuts = [
+    ['Find your way', '⌘ / Ctrl K'],
+    ['Shortcut sheet', '?'],
+    ['Send a message', 'Enter'],
+    ['A new line', 'Shift Enter'],
+    ['Bold / italic', '⌘ / Ctrl B / I'],
+    ['Close a panel', 'Esc'],
+    ['Browse Catch up', 'J / K'],
+    ['Mark inbox item done', 'E'],
+    ['Move in the lounge', 'Arrow keys'],
+  ];
+</script>
+
+<div class="settings-view">
+  <div class="settings-header">
+    <button class="text-button" onclick={back}><Icon name="back" size={15} />Back to your people</button>
+    <h1>Make yourself at home.</h1>
+    <p>A few little things, just the way you like them.</p>
+  </div>
+  <div class="settings-layout">
+    <nav class="settings-nav" aria-label="Settings sections">
+      {#each [{ title: 'Profile', icon: 'users' as const }, { title: 'Audio & video', icon: 'headphones' as const }, { title: 'Appearance', icon: 'sun' as const }, { title: 'Notifications', icon: 'bell' as const }, { title: 'Keyboard shortcuts', icon: 'keyboard' as const }, { title: 'Space', icon: 'compass' as const }] as t}<button
+          class:active={tab === t.title}
+          onclick={() => (tab = t.title)}><Icon name={t.icon} size={17} />{t.title}</button
+        >{/each}<button class="sign-out" onclick={() => auth.signOut()}
+        ><Icon name="logout" size={17} />Sign out</button
+      >
+    </nav>
+    <div class="settings-content">
+      <h2>{tab}</h2>
+      {#if tab === 'Appearance'}<p class="settings-description">
+          A space that feels like yours. Easy on the eyes, easy to settle into.
+        </p>
+        <h3>Your light</h3>
+        <div class="theme-options">
+          {#each [{ id: 'light', name: 'Daylight', icon: 'sun' as const }, { id: 'dark', name: 'After hours', icon: 'moon' as const }, { id: 'contrast', name: 'High contrast', icon: 'contrast' as const }] as t}<button
+              class:chosen={theme === t.id}
+              onclick={() => setTheme(t.id)}
+              aria-pressed={theme === t.id}
+              ><div class="theme-preview {t.id}"><i></i><span><b></b><b></b><b></b></span><em></em></div>
+              <span
+                ><Icon name={t.icon} size={15} />{t.name}{#if theme === t.id}<Icon
+                    name="check"
+                    size={15}
+                  />{/if}</span
+              ></button
+            >{/each}
+        </div>
+        <h3>A little breathing room</h3>
+        <div class="density-options">
+          {#each ['comfortable', 'compact'] as d}<button
+              class:chosen={density === d}
+              aria-pressed={density === d}
+              onclick={() => setDensity(d)}
+              ><Icon name={d === 'comfortable' ? 'expand' : 'collapse'} size={20} /><span
+                ><strong>{d === 'comfortable' ? 'Comfortable' : 'Compact'}</strong><small
+                  >{d === 'comfortable'
+                    ? 'Space for things to breathe.'
+                    : 'A little more on your screen.'}</small
+                ></span
+              ><span class="radio-circle">{density === d ? '●' : ''}</span></button
+            >{/each}
+        </div>
+        <h3>This space’s personality</h3>
+        <p class="settings-description">A hint of color, wherever you are in {info.data?.name}.</p>
+        <div class="color-swatches">
+          {#each ['#8064cc', '#4b9472', '#be7850', '#c46782', '#4f85b4', '#aa8a38'] as c}<button
+              style:--swatch={c}
+              class:chosen={info.data?.accent === c}
+              aria-label={`Set accent ${c}`}
+              aria-pressed={info.data?.accent === c}
+              onclick={() => updateSpace({ space, accent: c })}
+              >{#if info.data?.accent === c}<Icon name="check" size={18} />{/if}</button
+            >{/each}
+        </div>
+        <div class="tip">
+          <Icon name="leaf" size={17} />Motion stays gentle. Your system’s reduced motion setting is always
+          respected.
+        </div>
+      {:else if tab === 'Profile'}<p class="settings-description">A familiar face. A little about you.</p>
+        {#if me.data}<div class="profile-preview">
+            <Avatar name={profileName || 'You'} color={profileColor} size={70} status={me.data.status} /><span
+              ><strong>{profileName}</strong><small>{statusText}</small></span
+            ><input type="color" aria-label="Avatar color" bind:value={profileColor} />
+          </div>{/if}<label class="field">Your name<input bind:value={profileName} maxlength="32" /></label
+        ><label class="field"
+          >A little status<input
+            bind:value={statusText}
+            maxlength="100"
+            placeholder="What’s your world like today?"
+          /></label
+        ><label class="field"
+          >Presence<select
+            value={me.data?.status}
+            onchange={(e) => status({ status: e.currentTarget.value as PresenceStatus })}
+            ><option value="online">Here and happy to chat</option><option value="idle">A little away</option
+            ><option value="dnd">In the flow · do not disturb</option><option value="offline"
+              >Taking a quiet moment</option
+            ></select
+          ></label
+        ><button class="button primary" onclick={save}
+          >Save your details<Icon name="check" size={16} /></button
+        >
+      {:else if tab === 'Audio & video'}<p class="settings-description">
+          Sound like yourself, wherever you are.
+        </p>
+        <div class="audio-summary">
+          <span class="audio-summary-icon"><Icon name="audio" size={32} /></span>
+          <div>
+            <h3>Your sound, in a good place.</h3>
+            <p>
+              {call.audio.studio
+                ? 'Studio mode · Every detail preserved'
+                : `${call.audio.suppression} noise suppression · Voice mode`}
+            </p>
+          </div>
+          <button class="button soft" onclick={sound}>Sound check<Icon name="arrowRight" size={15} /></button>
+        </div>
+        <label class="setting-toggle"
+          ><span
+            ><strong>Studio</strong><small
+              >Keep the detail in music and instruments.<br />Disables echo cancellation and automatic
+              processing. Headphones recommended.</small
+            ></span
+          ><input
+            type="checkbox"
+            role="switch"
+            checked={call.audio.studio}
+            onchange={(e) => call.configureAudio({ ...call.audio, studio: e.currentTarget.checked })}
+          /></label
+        ><label class="field"
+          >Noise suppression
+          <div class="segmented large">
+            {#each ['Off', 'Gentle', 'Strong'] as mode}<button
+                disabled={call.audio.studio}
+                class:active={call.audio.suppression === mode}
+                onclick={() =>
+                  call.configureAudio({ ...call.audio, suppression: mode as 'Off' | 'Gentle' | 'Strong' })}
+                >{mode}</button
+              >{/each}
+          </div></label
+        >
+        <h3>Video, when it’s ready.</h3>
+        <p class="settings-description">
+          Camera capture will arrive with the browser media engine. You can already share a design preview and
+          try pointers and annotations in the demo call.
+        </p>
+      {:else if tab === 'Notifications'}<p class="settings-description">
+          Stay in the loop, without being pulled out of your flow.
+        </p>
+        {#each [{ label: 'Desktop notifications', detail: 'A gentle heads-up for new activity.', key: 'desktop' }, { label: 'Only the things for you', detail: 'Mentions, replies, and direct messages.', key: 'mentions' }, { label: 'A little sound', detail: 'A soft note when something arrives.', key: 'sounds' }] as setting}<label
+            class="setting-toggle"
+            ><span><strong>{setting.label}</strong><small>{setting.detail}</small></span><input
+              type="checkbox"
+              role="switch"
+              checked={setting.key === 'desktop' ? desktop : setting.key === 'mentions' ? mentions : sounds}
+              onchange={(e) => {
+                if (setting.key === 'desktop') desktop = e.currentTarget.checked;
+                else if (setting.key === 'mentions') mentions = e.currentTarget.checked;
+                else sounds = e.currentTarget.checked;
+                void notificationChange();
+              }}
+            /></label
+          >{/each}
+        <div class="tip">
+          <Icon name="bell" size={17} />Preferences are saved on this device. Push delivery connects with the
+          backend later.
+        </div>
+      {:else if tab === 'Keyboard shortcuts'}<p class="settings-description">
+          A few little shortcuts. A lot less reaching for the mouse.
+        </p>
+        <div class="shortcut-list">
+          {#each shortcuts as [label, keys]}<div><span>{label}</span><kbd>{keys}</kbd></div>{/each}
+        </div>
+      {:else if tab === 'Space'}<p class="settings-description">
+          Make this little corner of the internet feel like home.
+        </p>
+        <label class="field">Space name<input bind:value={spaceName} maxlength="32" /></label><label
+          class="field color-field"
+          >Accent<input type="color" bind:value={accent} /><span>{accent}</span></label
+        ><button class="button primary" onclick={save}>Save space<Icon name="check" size={15} /></button>
+        <h3>Good people welcome.</h3>
+        <p class="settings-description">
+          Invite someone to pull up a chair. Demo invites are previewable locally.
+        </p>
+        <button
+          class="button"
+          onclick={async () => {
+            const code = await createInvite({ space, expiresInHours: 48 });
+            invite = `${location.origin}/invite/${code}`;
+          }}>Create an invite<Icon name="link" size={15} /></button
+        >{#if invite}<div class="invite-copy">
+            <input aria-label="Invite link" readonly value={invite} /><button
+              class="button small"
+              onclick={async () => {
+                try {
+                  await navigator.clipboard.writeText(invite);
+                  notice('Invite copied. A good conversation starts with a hello.');
+                } catch {
+                  notice('Select and copy the invite link above.');
+                }
+              }}>Copy</button
+            ><a href={invite} class="button small">Preview</a>
+          </div>{/if}
+        <h3>Roles in this space</h3>
+        {#each info.data?.roles ?? [] as role}<details class="role-row">
+            <summary
+              ><span style:color={role.color}>●</span><strong>{role.name}</strong><span>View permissions</span
+              ></summary
+            >
+            <p class="settings-description">
+              {role.name === 'Maker'
+                ? 'Can manage this space, messages, rooms, and voice.'
+                : 'Can view, send messages, invite, speak, use video, and share a screen.'}
+            </p>
+          </details>{/each}
+        <p class="muted tiny">
+          Role assignment will connect when role mutations are available in the backend contract.
+        </p>{/if}
+      {#if error}<p class="error" role="alert">{error}</p>{/if}
+    </div>
+  </div>
+  <div class="settings-footnote">
+    Made for a little less noise, and a little more connection. <span>Pingo · interactive demo</span>
+  </div>
+</div>

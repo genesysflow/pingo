@@ -1,0 +1,7 @@
+node_modules
+dist
+screenshots
+bun.lock
+playwright-report
+test-results
+public/fonts
