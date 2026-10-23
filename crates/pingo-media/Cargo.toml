@@ -11,6 +11,7 @@ default = ["webrtc-apm"]
 webrtc-apm = ["dep:webrtc-audio-processing"]
 # The published deep_filter crate has DSP primitives but no inference/model loader.
 deepfilter = ["dep:deep_filter"]
+linux-capture = ["dep:ashpd", "dep:pipewire"]
 
 [dependencies]
 pingo-proto.workspace = true
@@ -30,6 +31,10 @@ nnnoiseless = { version = "0.5", default-features = false }
 opus = "0.3"
 webrtc-audio-processing = { version = "2.1", features = ["bundled"], optional = true }
 deep_filter = { version = "0.2.5", optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ashpd = { version = "0.13", features = ["screencast"], optional = true }
+pipewire = { version = "0.10", features = ["v0_3_65"], optional = true }
 
 [dev-dependencies]
 anyhow.workspace = true

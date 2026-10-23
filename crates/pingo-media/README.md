@@ -258,3 +258,31 @@ The headless join example also reached Connected and exited 0 with no remaining
 voice states. DeepFilter inference, STUN/TURN/native RED, browser/acoustic
 interoperability, hardware hot-plug and physical mouth-to-ear measurements remain
 outside this verification.
+
+## Native capture (Part A)
+
+Build with `--features linux-capture` for the ashpd ScreenCast portal and
+PipeWire screen/camera/app-audio backends in `video::capture::linux`. Screen
+sources are portal picker categories (`monitor`, `window`), not an enumeration
+that bypasses permission. Cursor Hidden/Embedded and portal restore tokens are
+supported; persist the returned token in the embedding application's settings.
+The portal may ignore persistence or revoke access; start errors propagate.
+Always await `stop()` to close the portal session immediately.
+
+Capture workers own their PipeWire loops; video queues are bounded and return
+the newest frame. Timestamps use PipeWire header PTS relative to the first frame
+(with monotonic receipt time fallback); damage is exposed when supplied.
+Only BGRx/RGBx CPU-mapped buffers are negotiated. DMA-BUF import is **not
+implemented**, and no modifier format is advertised. There is no GPU zero-copy.
+Cameras enumerate PipeWire `Video/Source` nodes by stable object serial. A camera
+must offer packed RGB through its PipeWire adapter; native MJPEG/YUYV conversion
+is not yet provided. macOS ScreenCaptureKit and Windows.Graphics.Capture remain
+explicit platform TODO modules.
+
+`AppAudioCapturer` captures one application's playback ports as 48 kHz stereo
+10 ms PCM frames. Select from `list_sources()`, which excludes this process,
+Pingo-named nodes and nodes with unknown ownership. The selected serial is
+revalidated at start and reconnection is disabled. A whole output-monitor mix
+is deliberately not exposed because it would include call playback; separate
+sink routing is required before implementing that option. Feed these frames to
+the RTC screen-audio input, which encodes stereo Opus without microphone DSP.

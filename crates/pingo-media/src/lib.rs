@@ -2,6 +2,7 @@
 pub mod audio;
 pub mod pipeline;
 pub mod rtc;
+pub mod video;
 
 pub const SAMPLE_RATE: u32 = 48_000;
 pub const FRAME_SAMPLES: usize = 480;
