@@ -8,6 +8,7 @@ const port = mock
     : (process.env.PINGO_E2E_WEB_PORT ?? '5188');
 const baseURL = `http://127.0.0.1:${port}`;
 export default defineConfig({
+  outputDir: `test-results/${mock ? 'mock' : production ? 'production' : 'live'}`,
   testDir: mock ? './tests/e2e' : './tests/e2e/real',
   testIgnore: mock ? '**/real/**' : undefined,
   fullyParallel: false,

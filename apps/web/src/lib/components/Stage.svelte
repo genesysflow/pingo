@@ -236,7 +236,11 @@
     {#each call.reactions as r (r.id)}<span
         class="floating-reaction"
         style:left={`${20 + ((r.id * 19) % 60)}%`}
-        >{r.emoji}<small>{r.user === call.userId ? 'You' : (participants.data?.find(p => p.user === r.user)?.name ?? 'Someone')}</small></span
+        >{r.emoji}<small
+          >{r.user === call.userId
+            ? 'You'
+            : (participants.data?.find((p) => p.user === r.user)?.name ?? 'Someone')}</small
+        ></span
       >{/each}
   </div>
   <div class="stage-bottom">

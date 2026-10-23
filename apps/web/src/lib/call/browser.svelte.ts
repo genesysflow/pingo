@@ -628,6 +628,9 @@ export class BrowserCallController extends CallState implements CallController {
     clearTimeout(this.reconnectTimer);
     this.reconnectTimer = undefined;
     this.cleanup();
+    this.spatialMix = {};
+    this.manualVolume = {};
+    this.volumes = {};
     this.retry.connected();
     super.leave();
   }

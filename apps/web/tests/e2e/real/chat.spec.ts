@@ -66,16 +66,13 @@ test('real auth, invites, live chat, threads, reactions, unread and mentions', a
 test('real message history loads older cursor pages without unbounded DOM rows', async ({ page }) => {
   await signup(page, 'History');
   await createSpace(page);
-  for (let i = 0; i < 40; i++) await send(page, `History message ${i}`);
+  for (let i = 0; i < 80; i++) await send(page, `History message ${i}`);
+  await expect(page.locator('[data-message-id^="optimistic:"]')).toHaveCount(0);
   const log = page.getByRole('log');
   await log.evaluate((node) => (node.scrollTop = 0));
   await page.getByRole('button', { name: 'Earlier conversations' }).click();
-  await log.evaluate((node) => (node.scrollTop = 0));
-  await expect(
-    page
-      .getByRole('article')
-      .filter({ hasText: /^.*History message 0/ })
-      .first(),
-  ).toBeVisible();
-  expect(await page.locator('.virtual-row').count()).toBeLessThan(35);
+  await expect(page.getByRole('button', { name: 'Earlier conversations' })).toHaveCount(0);
+  await log.press('Control+Home');
+  await expect(page.getByRole('article').filter({ hasText: 'History message 0' }).first()).toBeVisible();
+  expect(await page.locator('.virtual-row').count()).toBeLessThan(80);
 });
