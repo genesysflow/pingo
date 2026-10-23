@@ -57,7 +57,7 @@ test('thread replies, autocomplete, uploads, and member DMs work', async ({ page
   await composer.fill('Hi @May');
   await expect(page.getByRole('option', { name: /Maya Chen/ })).toBeVisible();
   await composer.press('Tab');
-  await expect(composer).toHaveValue('Hi @Maya ');
+  await expect(composer).toHaveValue('Hi @Maya Chen ');
   await composer.fill('A little :seed');
   await composer.press('Tab');
   await expect(composer).toHaveValue('A little 🌱 ');

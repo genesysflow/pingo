@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { api, useQuery, useMutation } from '../data';
+  import { api, useQuery, useMutation, useAuth, errorMessage } from '../data';
   import type { CallController } from '../call/controller.svelte';
   import Avatar from './Avatar.svelte';
   import Icon from './Icon.svelte';
@@ -9,6 +9,8 @@
     close,
     openDm,
   }: { space: string; call: CallController; close: () => void; openDm: (id: string) => void } = $props();
+  const auth = useAuth();
+  let error = $state('');
   const members = useQuery(api.spaces.members, () => ({ space })),
     dm = useMutation(api.dms.open);
 </script>
@@ -21,6 +23,7 @@
     </div>
     <button class="icon-button" onclick={close} aria-label="Close members"><Icon name="close" /></button>
   </div>
+  {#if error}<p class="error" role="alert">{error}</p>{/if}
   <p class="panel-note">Good things happen with good company.</p>
   {#each ['online', 'idle', 'dnd', 'offline'] as status}{@const group =
       members.data?.filter((p) => p.status === status) ?? []}{#if group.length}<div
@@ -31,15 +34,23 @@
         >
       </div>
       {#each group as p}<div class="member-row">
-          <button onclick={async () => openDm(await dm({ user: p.user }))}
+          <button
+            onclick={async () => {
+              try {
+                openDm(await dm({ user: p.user }));
+              } catch (e) {
+                error = errorMessage(e);
+              }
+            }}
             ><Avatar
+              url={p.avatarUrl}
               name={p.name}
               color={p.color}
               status={p.status}
               speaking={(call.levels[p.user] ?? 0) > 0.5 && !!call.room}
             /><span
               ><strong>{p.name}</strong><small
-                >{p.roles.includes('maker') ? 'Maker · that’s you' : 'Here for the good ideas'}</small
+                >{p.user === auth.userId ? 'Maker · that’s you' : 'Here for the good ideas'}</small
               ></span
             ></button
           >{#if call.room}<label class="volume-control"

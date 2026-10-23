@@ -1,6 +1,6 @@
 <script lang="ts">
   import Flourish from './Flourish.svelte';
-  import { api, useQuery, useMutation, type InboxItem } from '../data';
+  import { api, useQuery, useMutation, errorMessage, isDemo, type InboxItem } from '../data';
   import { formatTime } from '../logic/chat';
   import Avatar from './Avatar.svelte';
   import Markdown from './Markdown.svelte';
@@ -11,7 +11,8 @@
     done = useMutation(api.inbox.markDone),
     allDone = useMutation(api.inbox.markAllDone);
   let filter = $state('All'),
-    selected = $state(0);
+    selected = $state(0),
+    error = $state('');
   const filtered = $derived(
     (items.data ?? []).filter(
       (i) =>
@@ -38,7 +39,8 @@
       selected = Math.max(0, Math.min(filtered.length - 1, selected + (e.key === 'j' ? 1 : -1)));
       document.getElementById(`inbox-${selected}`)?.focus();
     }
-    if (e.key === 'e' && filtered[selected]) void done({ item: filtered[selected]._id });
+    if (e.key === 'e' && filtered[selected])
+      void done({ item: filtered[selected]._id }).catch((e) => (error = errorMessage(e)));
   }
 </script>
 
@@ -67,10 +69,14 @@
           >{f}{#if f === 'All' && count.data}<span>{count.data}</span>{/if}</button
         >{/each}
     </div>
-    <button class="text-button" disabled={!count.data} onclick={() => allDone()}
+    <button
+      class="text-button"
+      disabled={!count.data}
+      onclick={() => allDone().catch((e) => (error = errorMessage(e)))}
       ><Icon name="checkAll" size={16} />Mark all done</button
     >
   </div>
+  {#if error || items.error}<p class="error" role="alert">{error || errorMessage(items.error)}</p>{/if}
   <div class="inbox-feed">
     {#each filtered as item, i (item._id)}<article class="inbox-card" class:selected={selected === i}>
         <div class="inbox-card-top">
@@ -91,7 +97,12 @@
           >
         </div>
         <div class="inbox-card-body">
-          <Avatar name={item.message.author.name} color={item.message.author.color} size={38} />
+          <Avatar
+            url={item.message.author.avatarUrl}
+            name={item.message.author.name}
+            color={item.message.author.color}
+            size={38}
+          />
           <div>
             <strong>{item.message.author.name}</strong><Markdown
               text={item.message.body}
@@ -110,7 +121,9 @@
               name="arrowRight"
               size={14}
             /></button
-          ><button class="button small" onclick={() => done({ item: item._id })}
+          ><button
+            class="button small"
+            onclick={() => done({ item: item._id }).catch((e) => (error = errorMessage(e)))}
             ><Icon name="check" size={14} />Done</button
           >
         </div>
@@ -123,7 +136,7 @@
             ? 'Nothing needs your attention. Enjoy the quiet.'
             : 'Nothing here right now. A little less to think about.'}
         </p>
-        <button class="button soft" onclick={() => open('design')}
+        <button class="button soft" onclick={() => open(isDemo ? 'design' : '')}
           >Back to your people<Icon name="arrowRight" size={15} /></button
         >
       </div>{/if}

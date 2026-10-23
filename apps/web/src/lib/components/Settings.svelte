@@ -1,6 +1,7 @@
 <script lang="ts">
+  import { errorMessage } from '../data/errors';
   import { untrack } from 'svelte';
-  import { api, useQuery, useMutation, useAuth, type PresenceStatus } from '../data';
+  import { api, useQuery, useMutation, useAuth, uploadFile, type PresenceStatus } from '../data';
   import type { CallController } from '../call/controller.svelte';
   import Icon from './Icon.svelte';
   import Avatar from './Avatar.svelte';
@@ -33,7 +34,9 @@
     status = useMutation(api.presence.setStatus),
     updateSpace = useMutation(api.spaces.update),
     createInvite = useMutation(api.invites.create),
-    auth = useAuth();
+    auth = useAuth(),
+    generateUpload = useMutation(api.files.generateUploadUrl),
+    leaveSpace = useMutation(api.spaces.leave);
   let profileName = $state(''),
     statusText = $state(''),
     profileColor = $state('#b9a2e7'),
@@ -41,7 +44,9 @@
     accent = $state('#8064cc'),
     invite = $state(''),
     tab = $state(untrack(() => page)),
-    error = $state('');
+    error = $state(''),
+    leaving = $state(false),
+    uploading = $state(false);
   let desktop = $state(localStorage.getItem('pingo-notify-desktop') !== 'false'),
     sounds = $state(localStorage.getItem('pingo-notify-sounds') === 'true'),
     mentions = $state(localStorage.getItem('pingo-notify-mentions') !== 'false');
@@ -67,7 +72,23 @@
       } else if (tab === 'Space') await updateSpace({ space, name: spaceName, accent });
       notice('A little more you. Changes saved.');
     } catch (e) {
-      error = (e as Error).message;
+      error = errorMessage(e);
+    }
+  }
+  async function imageUpload(event: Event, target: 'avatar' | 'icon') {
+    const file = (event.currentTarget as HTMLInputElement).files?.[0];
+    if (!file) return;
+    error = '';
+    uploading = true;
+    try {
+      const id = await uploadFile(await generateUpload(), file);
+      if (target === 'avatar') await updateProfile({ avatar: id });
+      else await updateSpace({ space, icon: id });
+      notice('Image saved.');
+    } catch (e) {
+      error = errorMessage(e);
+    } finally {
+      uploading = false;
     }
   }
   async function notificationChange() {
@@ -151,7 +172,7 @@
               class:chosen={info.data?.accent === c}
               aria-label={`Set accent ${c}`}
               aria-pressed={info.data?.accent === c}
-              onclick={() => updateSpace({ space, accent: c })}
+              onclick={() => updateSpace({ space, accent: c }).catch((e) => (error = errorMessage(e)))}
               >{#if info.data?.accent === c}<Icon name="check" size={18} />{/if}</button
             >{/each}
         </div>
@@ -159,11 +180,27 @@
           <Icon name="leaf" size={17} />Motion stays gentle. Your system’s reduced motion setting is always
           respected.
         </div>
-      {:else if tab === 'Profile'}<p class="settings-description">A familiar face. A little about you.</p>
+      {:else if tab === 'Profile'}<label class="field"
+          >Profile photo<input
+            type="file"
+            accept="image/*"
+            disabled={uploading}
+            onchange={(e) => imageUpload(e, 'avatar')}
+          /></label
+        >
+        <p class="settings-description">A familiar face. A little about you.</p>
         {#if me.data}<div class="profile-preview">
-            <Avatar name={profileName || 'You'} color={profileColor} size={70} status={me.data.status} /><span
-              ><strong>{profileName}</strong><small>{statusText}</small></span
-            ><input type="color" aria-label="Avatar color" bind:value={profileColor} />
+            <Avatar
+              url={me.data?.avatarUrl}
+              name={profileName || 'You'}
+              color={profileColor}
+              size={70}
+              status={me.data.status}
+            /><span><strong>{profileName}</strong><small>{statusText}</small></span><input
+              type="color"
+              aria-label="Avatar color"
+              bind:value={profileColor}
+            />
           </div>{/if}<label class="field">Your name<input bind:value={profileName} maxlength="32" /></label
         ><label class="field"
           >A little status<input
@@ -174,7 +211,10 @@
         ><label class="field"
           >Presence<select
             value={me.data?.status}
-            onchange={(e) => status({ status: e.currentTarget.value as PresenceStatus })}
+            onchange={(e) =>
+              status({ status: e.currentTarget.value as PresenceStatus }).catch(
+                (e) => (error = errorMessage(e)),
+              )}
             ><option value="online">Here and happy to chat</option><option value="idle">A little away</option
             ><option value="dnd">In the flow · do not disturb</option><option value="offline"
               >Taking a quiet moment</option
@@ -222,10 +262,9 @@
               >{/each}
           </div></label
         >
-        <h3>Video, when it’s ready.</h3>
+        <h3>Share a little more.</h3>
         <p class="settings-description">
-          Camera capture will arrive with the browser media engine. You can already share a design preview and
-          try pointers and annotations in the demo call.
+          Use the camera and screen controls in your call. Point and draw while someone shares a screen.
         </p>
       {:else if tab === 'Notifications'}<p class="settings-description">
           Stay in the loop, without being pulled out of your flow.
@@ -257,19 +296,46 @@
       {:else if tab === 'Space'}<p class="settings-description">
           Make this little corner of the internet feel like home.
         </p>
+        <label class="field"
+          >Space icon<input
+            type="file"
+            accept="image/*"
+            disabled={uploading}
+            onchange={(e) => imageUpload(e, 'icon')}
+          /></label
+        >
         <label class="field">Space name<input bind:value={spaceName} maxlength="32" /></label><label
           class="field color-field"
           >Accent<input type="color" bind:value={accent} /><span>{accent}</span></label
         ><button class="button primary" onclick={save}>Save space<Icon name="check" size={15} /></button>
+        {#if leaving}<p>Leave this space?</p>
+          <button
+            class="button danger"
+            onclick={async () => {
+              try {
+                await leaveSpace({ space });
+                back();
+              } catch (e) {
+                error = errorMessage(e);
+              }
+            }}>Leave space</button
+          ><button class="text-button" onclick={() => (leaving = false)}>Stay here</button>{:else}<button
+            class="text-button"
+            onclick={() => (leaving = true)}>Leave this space</button
+          >{/if}
         <h3>Good people welcome.</h3>
         <p class="settings-description">
-          Invite someone to pull up a chair. Demo invites are previewable locally.
+          Invite someone to pull up a chair. Invite links can be shared with anyone you want to join.
         </p>
         <button
           class="button"
           onclick={async () => {
-            const code = await createInvite({ space, expiresInHours: 48 });
-            invite = `${location.origin}/invite/${code}`;
+            try {
+              const code = await createInvite({ space, expiresInHours: 48 });
+              invite = `${location.origin}/invite/${code}`;
+            } catch (e) {
+              error = errorMessage(e);
+            }
           }}>Create an invite<Icon name="link" size={15} /></button
         >{#if invite}<div class="invite-copy">
             <input aria-label="Invite link" readonly value={invite} /><button
@@ -303,6 +369,6 @@
     </div>
   </div>
   <div class="settings-footnote">
-    Made for a little less noise, and a little more connection. <span>Pingo · interactive demo</span>
+    Made for a little less noise, and a little more connection. <span>Pingo</span>
   </div>
 </div>

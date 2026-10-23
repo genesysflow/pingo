@@ -1,6 +1,7 @@
 <script lang="ts">
   import {
     Hash,
+    Video,
     Headphones,
     Mic,
     MicOff,
@@ -72,6 +73,7 @@
   } from '@lucide/svelte';
   const icons = {
     hash: Hash,
+    video: Video,
     headphones: Headphones,
     mic: Mic,
     micOff: MicOff,

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { errorMessage } from '../data/errors';
   import { onDestroy } from 'svelte';
   import { api, useMutation, useQuery, uploadFile, insertAtTop, type MessageView } from '../data';
   import { emoji, expandEmoji } from '../logic/chat';
@@ -31,7 +32,7 @@
     startTyping = useMutation(api.typing.start),
     generateUrl = useMutation(api.files.generateUploadUrl);
   const me = useQuery(api.profiles.me);
-  const members = useQuery(api.spaces.members, () => ({ space }));
+  const members = useQuery(api.spaces.members, () => space ? ({ space }) : 'skip');
   const token = $derived(text.match(/(?:^|\s)([@:/][\w-]*)$/)?.[1] ?? '');
   const suggestions = $derived(
     (token.startsWith('@')
@@ -39,7 +40,7 @@
           .filter((p) => p.name.toLowerCase().includes(token.slice(1).toLowerCase()))
           .map((p) => ({
             label: p.name,
-            value: `@${p.name.split(' ')[0]} `,
+            value: `@${p.name} `,
             detail: 'Mention someone',
             icon: '@',
           }))
@@ -69,7 +70,7 @@
     selected = 0;
     if (Date.now() - lastTyping > 2000 && text.trim()) {
       lastTyping = Date.now();
-      void startTyping({ room });
+      void startTyping({ room }).catch(() => {});
     }
   }
   async function submit() {
@@ -130,7 +131,7 @@
     } catch (e) {
       text = body;
       attachments = files;
-      error = (e as Error).message;
+      error = errorMessage(e);
     }
     input.focus();
   }
@@ -154,7 +155,7 @@
         });
       }
     } catch (e) {
-      error = (e as Error).message;
+      error = errorMessage(e);
     } finally {
       uploading = false;
     }

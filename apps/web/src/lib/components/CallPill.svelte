@@ -26,6 +26,10 @@
   }
 </script>
 
+{#if call.error}<div class="toast" role="alert">
+    {call.error}<button class="button small" onclick={() => call.resumeAudio()}>Resume audio</button>
+  </div>{/if}
+
 <svelte:window
   onresize={() => {
     if (x !== null && y !== null) moveTo(x, y);

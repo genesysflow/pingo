@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { api, useMutation, type MessageView } from '../data';
+  import { errorMessage } from '../data/errors';
+  import { api, useMutation, useAuth, isDemo, type MessageView } from '../data';
   import { emoji, formatBytes, formatTime } from '../logic/chat';
   import Avatar from './Avatar.svelte';
   import Icon from './Icon.svelte';
   import Markdown from './Markdown.svelte';
+  const auth = useAuth();
   let {
     message: m,
     grouped = false,
@@ -28,7 +30,7 @@
       await edit({ message: m._id, body: editBody });
       editing = false;
     } catch (e) {
-      error = (e as Error).message;
+      error = errorMessage(e);
     }
   }
 </script>
@@ -41,12 +43,15 @@
   class:deleted={m.deleted}
   aria-label={`${m.author.name} at ${formatTime(m._creationTime)}`}
 >
-  {#if !grouped}<Avatar name={m.author.name} color={m.author.color} size={narrow ? 30 : 36} />{:else}<span
-      class="group-time">{formatTime(m._creationTime)}</span
-    >{/if}
+  {#if !grouped}<Avatar
+      url={m.author.avatarUrl}
+      name={m.author.name}
+      color={m.author.color}
+      size={narrow ? 30 : 36}
+    />{:else}<span class="group-time">{formatTime(m._creationTime)}</span>{/if}
   <div class="message-body">
     {#if !grouped}<div class="message-author">
-        <strong>{m.author.name}</strong>{#if m.author.user === 'you'}<span class="you-tag">you</span
+        <strong>{m.author.name}</strong>{#if m.author.user === auth.userId}<span class="you-tag">you</span
           >{/if}<time datetime={new Date(m._creationTime).toISOString()}>{formatTime(m._creationTime)}</time>
       </div>{/if}
     {#if m.deleted}<p class="muted"><i>This message was deleted.</i></p>
@@ -91,20 +96,21 @@
               class:mine={r.mine}
               aria-pressed={r.mine}
               aria-label={`${r.emoji}, ${r.count} reactions`}
-              onclick={() => react({ message: m._id, emoji: r.emoji })}
+              onclick={() =>
+                react({ message: m._id, emoji: r.emoji }).catch((e) => (error = errorMessage(e)))}
               ><span>{r.emoji}</span>{r.count}</button
             >{/each}<button class="add-reaction" aria-label="Add reaction" onclick={() => (picker = !picker)}
             ><Icon name="smile" size={15} /><span>+</span></button
           >
         </div>{/if}
       {#if m.replyCount && onThread}<button class="thread-link" onclick={() => onThread?.(m._id)}
-          ><span class="tiny-avatars"
-            ><Avatar name="Leo Park" color="#a0c4af" size={19} /><Avatar
-              name="Sofia Reyes"
-              color="#e6a4ba"
-              size={19}
-            /><Avatar name="Alex Morgan" color="#b9a2e7" size={19} /></span
-          >{m.replyCount} replies<span class="muted tiny">View thread</span><Icon
+          >{#if isDemo}<span class="tiny-avatars"
+              ><Avatar name="Leo Park" color="#a0c4af" size={19} /><Avatar
+                name="Sofia Reyes"
+                color="#e6a4ba"
+                size={19}
+              /><Avatar name="Alex Morgan" color="#b9a2e7" size={19} /></span
+            >{/if}{m.replyCount} replies<span class="muted tiny">View thread</span><Icon
             name="right"
             size={13}
           /></button
@@ -115,8 +121,12 @@
         Delete this message?<button
           class="button small danger"
           onclick={async () => {
-            await remove({ message: m._id });
-            deleting = false;
+            try {
+              await remove({ message: m._id });
+              deleting = false;
+            } catch (e) {
+              error = errorMessage(e);
+            }
           }}>Delete</button
         ><button class="button small" onclick={() => (deleting = false)}>Keep it</button>
       </div>{/if}
@@ -124,8 +134,12 @@
         {#each Object.values(emoji) as em}<button
             aria-label={`React ${em}`}
             onclick={async () => {
-              await react({ message: m._id, emoji: em });
-              picker = false;
+              try {
+                await react({ message: m._id, emoji: em });
+                picker = false;
+              } catch (e) {
+                error = errorMessage(e);
+              }
             }}>{em}</button
           >{/each}<button aria-label="Close reactions" onclick={() => (picker = false)}
           ><Icon name="close" size={15} /></button
@@ -137,7 +151,7 @@
         ><Icon name="smile" size={16} /></button
       >{#if onThread}<button aria-label="Reply in thread" onclick={() => onThread?.(m._id)}
           ><Icon name="thread" size={16} /></button
-        >{/if}{#if m.author.user === 'you'}<button
+        >{/if}{#if m.author.user === auth.userId}<button
           aria-label="Edit message"
           onclick={() => {
             editBody = m.body;

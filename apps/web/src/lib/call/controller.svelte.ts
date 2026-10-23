@@ -1,4 +1,4 @@
-import type { VoiceParticipant } from '../data/types';
+import type { TrackKind } from '../proto';
 import type { DataMsg } from '../proto';
 import type { Point } from '../logic/lounge';
 export interface AudioSettings {
@@ -7,7 +7,23 @@ export interface AudioSettings {
   suppression: 'Off' | 'Gentle' | 'Strong';
   studio: boolean;
 }
+export interface CallMedia {
+  mid: string;
+  user: string;
+  kind: TrackKind;
+  stream: MediaStream;
+}
 export interface CallController {
+  readonly userId: string;
+  readonly screenMid: string;
+  readonly connection: 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'failed';
+  readonly error: string;
+  readonly media: CallMedia[];
+  readonly localScreen: MediaStream | null;
+  readonly camera: boolean;
+  toggleCamera(): void;
+  resumeAudio(): void;
+  setVideoQuality(mid: string, maxHeight: number): void;
   readonly room: string | null;
   readonly roomName: string;
   readonly startedAt: number;
@@ -19,10 +35,11 @@ export interface CallController {
   readonly levels: Record<string, number>;
   readonly raised: string[];
   readonly reactions: { id: number; user: string; emoji: string; expires: number }[];
-  readonly pointers: Record<string, { pos: Point; expires: number }>;
+  readonly pointers: Record<string, { pos: Point; expires: number; shareMid: string }>;
   readonly strokes: {
     id: number;
     user: string;
+    shareMid: string;
     points: [number, number][];
     color: string;
     expires: number;
@@ -42,7 +59,19 @@ export interface CallController {
   setParticipantVolume(user: string, volume: number): void;
   destroy(): void;
 }
-export class MockCallController implements CallController {
+export class CallState implements CallController {
+  userId = 'you';
+  screenMid = 'demo-screen';
+  connection = $state<CallController['connection']>('idle');
+  error = $state('');
+  media = $state<CallMedia[]>([]);
+  localScreen = $state<MediaStream | null>(null);
+  camera = $state(false);
+  toggleCamera() {
+    this.camera = !this.camera;
+  }
+  resumeAudio() {}
+  setVideoQuality(_mid: string, _maxHeight: number) {}
   room = $state<string | null>(null);
   roomName = $state('');
   startedAt = $state(0);
@@ -54,9 +83,16 @@ export class MockCallController implements CallController {
   levels = $state<Record<string, number>>({});
   raised = $state<string[]>([]);
   reactions = $state<{ id: number; user: string; emoji: string; expires: number }[]>([]);
-  pointers = $state<Record<string, { pos: Point; expires: number }>>({});
+  pointers = $state<Record<string, { pos: Point; expires: number; shareMid: string }>>({});
   strokes = $state<
-    { id: number; user: string; points: [number, number][]; color: string; expires: number }[]
+    {
+      id: number;
+      user: string;
+      shareMid: string;
+      points: [number, number][];
+      color: string;
+      expires: number;
+    }[]
   >([]);
   volumes = $state<Record<string, { volume: number; pan: number }>>({});
   audio = $state<AudioSettings>({
@@ -74,12 +110,14 @@ export class MockCallController implements CallController {
       room: string,
       state: { muted: boolean; deafened: boolean; sharingScreen: boolean } | null,
     ) => void,
+    simulate = true,
   ) {
     this.timer = setInterval(() => {
       this.clock = Date.now();
-      for (const [i, user] of ['maya', 'leo', 'sofia', 'noah', 'jules', 'you'].entries())
-        this.levels[user] =
-          user === 'you' && this.muted ? 0 : Math.max(0, Math.sin(this.clock / 900 + i * 2.8)) * 0.8;
+      if (simulate)
+        for (const [i, user] of ['maya', 'leo', 'sofia', 'noah', 'jules', 'you'].entries())
+          this.levels[user] =
+            user === 'you' && this.muted ? 0 : Math.max(0, Math.sin(this.clock / 900 + i * 2.8)) * 0.8;
       this.reactions = this.reactions.filter((r) => r.expires > this.clock);
       this.strokes = this.strokes.filter((s) => s.expires > this.clock);
       for (const [user, p] of Object.entries(this.pointers))
@@ -92,6 +130,7 @@ export class MockCallController implements CallController {
   }
   async join(room: string, name: string) {
     await this.requestJoin(room);
+    this.connection = 'connected';
     this.room = room;
     this.roomName = name;
     this.startedAt = Date.now();
@@ -103,6 +142,7 @@ export class MockCallController implements CallController {
   }
   leave() {
     if (this.room) this.durable(this.room, null);
+    this.connection = 'idle';
     this.room = null;
     this.sharing = false;
     this.raised = [];
@@ -151,13 +191,18 @@ export class MockCallController implements CallController {
         break;
       case 'pointer':
         if (data.pos)
-          this.pointers[user] = { pos: { x: data.pos[0], y: data.pos[1] }, expires: Date.now() + 2500 };
+          this.pointers[user] = {
+            pos: { x: data.pos[0], y: data.pos[1] },
+            shareMid: data.shareMid,
+            expires: Date.now() + 2500,
+          };
         else delete this.pointers[user];
         break;
       case 'stroke':
         this.strokes.push({
           id: ++this.seq,
           user,
+          shareMid: data.shareMid,
           points: data.points,
           color: data.color,
           expires: Date.now() + 5000,
@@ -166,6 +211,10 @@ export class MockCallController implements CallController {
     }
   }
   destroy() {
+    this.leave();
     clearInterval(this.timer);
   }
 }
+
+/** Design-only controller; live calls reuse only the shared reactive state and event reducer. */
+export class MockCallController extends CallState {}

@@ -1,8 +1,10 @@
 <script lang="ts">
+  import { errorMessage } from '../data/errors';
   import { tick } from 'svelte';
-  import { api, useQuery, useMutation, type RoomSummary, type SpaceSummary } from '../data';
+  import { api, useQuery, useAuth, useMutation, type RoomSummary, type SpaceSummary } from '../data';
   import Icon from './Icon.svelte';
   import Modal from './Modal.svelte';
+  const auth = useAuth();
   let {
     space,
     rooms,
@@ -19,7 +21,8 @@
     action: (name: string) => void;
   } = $props();
   let text = $state(''),
-    selected = $state(0);
+    selected = $state(0),
+    error = $state('');
   const members = useQuery(api.spaces.members, () => ({ space })),
     search = useQuery(api.messages.search, () =>
       text.trim().length > 1 ? { space, text: text.replace(/^search\s+/i, '') } : 'skip',
@@ -38,19 +41,11 @@
         detail: 'Space',
         icon: 'compass' as const,
         run: () => {
-          const id =
-            s._id === 'fieldwork'
-              ? 'design'
-              : s._id === 'afterhours'
-                ? 'music'
-                : s._id === 'opensource'
-                  ? 'garden'
-                  : '';
-          navigate(id, s._id);
+          navigate('', s._id);
         },
       })),
       ...(members.data ?? [])
-        .filter((m) => m.user !== 'you')
+        .filter((m) => m.user !== auth.userId)
         .map((p) => ({
           title: p.name,
           detail: 'Direct message',
@@ -71,20 +66,22 @@
   );
   const results = $derived([
     ...entries.slice(0, text ? 15 : 8),
-    ...(search.data ?? [])
-      .slice(0, 8)
-      .map((m) => ({
-        title: m.body.slice(0, 100),
-        detail: `${m.author.name} · message`,
-        icon: 'thread' as const,
-        run: () => navigate(m.room),
-      })),
+    ...(search.data ?? []).slice(0, 8).map((m) => ({
+      title: m.body.slice(0, 100),
+      detail: `${m.author.name} · message`,
+      icon: 'thread' as const,
+      run: () => navigate(m.room),
+    })),
   ]);
   async function run(i: number) {
     const entry = results[i];
     if (entry) {
-      await entry.run();
-      close();
+      try {
+        await entry.run();
+        close();
+      } catch (e) {
+        error = errorMessage(e);
+      }
     }
   }
   function keydown(e: KeyboardEvent) {
@@ -117,6 +114,7 @@
       autocomplete="off"
     /><kbd>esc</kbd>
   </div>
+  {#if error}<p class="error" role="alert">{error}</p>{/if}
   <div class="palette-section-label">{text ? 'A FEW GOOD MATCHES' : 'YOUR NEXT LITTLE MOVE'}</div>
   <div class="command-results" id="command-results" role="listbox">
     {#each results as r, i}<button
