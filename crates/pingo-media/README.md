@@ -286,3 +286,40 @@ revalidated at start and reconnection is disabled. A whole output-monitor mix
 is deliberately not exposed because it would include call playback; separate
 sink routing is required before implementing that option. Feed these frames to
 the RTC screen-audio input, which encodes stereo Opus without microphone DSP.
+
+## Video encoding (Part B)
+
+`video::color::I420Frame` converts BGRx/RGBx (including padded rows) to BT.709
+limited-range I420 using yuvutils-rs SIMD, scales each Y/U/V plane with
+fast_image_resize SIMD, and interleaves NV12 for hardware upload. Odd capture
+sizes crop the final row/column. Text defaults to 15 fps (configurable 5–15),
+up to 3840×2160, with OpenH264 screen-content tuning; Motion allows 1920×1080
+at 60 fps. These are requested ceilings, not a real-time throughput guarantee.
+
+`VideoEncoder` supports bitrate changes and explicit keyframe requests.
+`SimulcastEncoder` uses independent encoders: screen `l,h` at half/full size,
+camera `l,m,h` at quarter/half/full size, with actual sizes/bitrates advertised
+as RID attributes. Bitrate changes use 20% hysteresis and preserve capture
+clocks; reinitializing a codec emits an IDR. Layers remain active; publisher-side
+dynacast is not implemented because the signaling contract carries no layer
+subscriber counts.
+
+OpenH264 0.9.9 is the default software encoder/decoder: the Rust wrapper is
+BSD-2-Clause and the bundled Cisco OpenH264 source is BSD-2-Clause. Cargo's
+`source` feature compiles that source locally (no runtime binary download).
+Cisco's royalty coverage for its separately distributed binary does **not**
+automatically cover this source-built artifact; distributors must assess H.264
+patent obligations. This project does not claim royalty-free H.264 distribution.
+
+`--features vp8` enables system libvpx via ffmpeg-next. The published
+`vpx-encode 0.6.2` failed to build its generated encoder config bindings against
+this machine's libvpx/Clang, so it is not included. libvpx is BSD-3-Clause;
+ffmpeg-next is WTFPL, and system FFmpeg has its own build-dependent LGPL/GPL
+license. In particular this machine's system FFmpeg enables GPL components;
+redistribution must comply with that installed build. No x264 API is used here.
+
+Linux `--features vaapi` enables FFmpeg h264_vaapi with NV12 upload, no B frames,
+a small hardware frame pool and runtime OpenH264 fallback on initialization,
+encoding or bitrate-reconfiguration failure. `PINGO_VAAPI_DEVICE` selects a
+render node (default `/dev/dri/renderD128`). FFmpeg/libva headers and libraries
+are required for these optional features. DMA-BUF zero-copy and NVENC are absent.

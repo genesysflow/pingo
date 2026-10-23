@@ -612,7 +612,7 @@ fn run_audio(
             let Some(bytes) = bytes.get(offset..offset.saturating_add(size)) else {
                 return;
             };
-            for stereo in bytes.chunks_exact(8) {
+            for stereo in bytes.as_chunks::<8>().0 {
                 partial.push([
                     f32::from_le_bytes(stereo[..4].try_into().unwrap()),
                     f32::from_le_bytes(stereo[4..].try_into().unwrap()),

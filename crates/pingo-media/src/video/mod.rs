@@ -1,5 +1,8 @@
 //! Capture, conversion and encoding live outside audio callbacks and RTC I/O.
 pub mod capture;
+pub mod color;
+pub mod encode;
+pub mod simulcast;
 
 #[derive(Debug, thiserror::Error)]
 pub enum VideoError {
