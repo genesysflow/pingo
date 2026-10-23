@@ -268,6 +268,9 @@ that bypasses permission. Cursor Hidden/Embedded and portal restore tokens are
 supported; persist the returned token in the embedding application's settings.
 The portal may ignore persistence or revoke access; start errors propagate.
 Always await `stop()` to close the portal session immediately.
+The example closes the session and stops its blocking workers on RTC errors and
+cancellation as well as normal leave. Video capture keeps one replaceable latest
+frame; audio retains ordered 10 ms quanta. Startup errors preserve their cause.
 
 Capture workers own their PipeWire loops; video queues are bounded and return
 the newest frame. Timestamps use PipeWire header PTS relative to the first frame
@@ -278,6 +281,12 @@ Cameras enumerate PipeWire `Video/Source` nodes by stable object serial. A camer
 must offer packed RGB through its PipeWire adapter; native MJPEG/YUYV conversion
 is not yet provided. macOS ScreenCaptureKit and Windows.Graphics.Capture remain
 explicit platform TODO modules.
+
+`cargo test -p pingo-media --features linux-capture --test capture -- --ignored
+--nocapture` opens the real portal picker and checks capture → encode → decode.
+It is excluded from normal hardware-free runs. `screenshare --capture-only`
+measures both simulcast layers without needing a room; `--synthetic` replaces
+portal input for repeatable measurements.
 
 `AppAudioCapturer` captures one application's playback ports as 48 kHz stereo
 10 ms PCM frames. Select from `list_sources()`, which excludes this process,

@@ -7,7 +7,21 @@ use pingo_media::{
         simulcast::{VideoPublishConfig, VideoSource},
     },
 };
-use std::time::{Duration, Instant};
+use std::{
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+    time::{Duration, Instant},
+};
+
+// Cancelling this future must also release blocking workers before Tokio shuts down.
+struct StopWorkers(Arc<AtomicBool>);
+impl Drop for StopWorkers {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::Relaxed);
+    }
+}
 use tokio::sync::{broadcast, mpsc};
 fn arg(name: &str) -> Option<String> {
     std::env::args()
@@ -79,7 +93,7 @@ async fn main() -> anyhow::Result<()> {
         Ok((capture, frame))
     })
     .await??;
-    let (capture, first) = first;
+    let (mut capture, first) = first;
     let (width, height) = mode.max_size();
     let scale = (width as f64 / first.width as f64)
         .min(height as f64 / first.height as f64)
@@ -95,9 +109,13 @@ async fn main() -> anyhow::Result<()> {
     }
     if flag("--capture-only") {
         let config = video.clone();
-        tokio::task::spawn_blocking(move || measure(capture, first, config, seconds, synthetic))
-            .await??;
-        return Ok(());
+        let (mut capture, result) = tokio::task::spawn_blocking(move || {
+            let result = measure(capture.as_mut(), first, config, seconds, synthetic);
+            (capture, result)
+        })
+        .await?;
+        capture.stop().await?;
+        return result;
     }
     let url = arg("--url").ok_or_else(|| anyhow::anyhow!("--url required"))?;
     let token = arg("--token")
@@ -113,30 +131,37 @@ async fn main() -> anyhow::Result<()> {
             config: Some(video.clone()),
         })
         .await?;
-    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let stop = Arc::new(AtomicBool::new(false));
+    let _stop_workers = StopWorkers(stop.clone());
     let stopped = stop.clone();
     let producer = commands.clone();
+    let runtime = tokio::runtime::Handle::current();
     let capture_task = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-        let mut capture = capture;
         let mut next = Some(first);
         let start = Instant::now();
         let mut frames = 0u64;
-        while !stopped.load(std::sync::atomic::Ordering::Relaxed) {
-            if synthetic {
-                std::thread::sleep(Duration::from_secs_f64(1.0 / video.fps as f64));
+        let result = (|| -> anyhow::Result<()> {
+            while !stopped.load(Ordering::Relaxed) {
+                if synthetic {
+                    std::thread::sleep(Duration::from_secs_f64(1.0 / video.fps as f64));
+                }
+                let frame = match next.take() {
+                    Some(frame) => Some(frame),
+                    None => capture.next_frame(Duration::from_millis(100))?,
+                };
+                if let Some(frame) = frame {
+                    frames += 1;
+                    let result = producer.try_send(Command::VideoFrame {
+                        source: VideoSource::Screen,
+                        frame: Box::new(frame),
+                    });
+                    if matches!(result, Err(mpsc::error::TrySendError::Closed(_))) {
+                        break;
+                    }
+                }
             }
-            let frame = match next.take() {
-                Some(frame) => Some(frame),
-                None => capture.next_frame(Duration::from_millis(100))?,
-            };
-            if let Some(frame) = frame {
-                frames += 1;
-                let _ = producer.try_send(Command::VideoFrame {
-                    source: VideoSource::Screen,
-                    frame: Box::new(frame),
-                });
-            }
-        }
+            Ok(())
+        })();
         eprintln!(
             "capture {}x{}, {frames} frames / {:.2}s = {:.2} fps",
             video.width,
@@ -144,7 +169,8 @@ async fn main() -> anyhow::Result<()> {
             start.elapsed().as_secs_f64(),
             frames as f64 / start.elapsed().as_secs_f64()
         );
-        Ok(())
+        runtime.block_on(capture.stop())?;
+        result
     });
     #[cfg(all(target_os = "linux", feature = "linux-capture"))]
     let audio_task = if let Some(serial) = arg("--audio-app") {
@@ -171,31 +197,31 @@ async fn main() -> anyhow::Result<()> {
     let deadline = tokio::time::sleep(Duration::from_secs(seconds));
     tokio::pin!(deadline);
     let mut leaving = false;
-    loop {
+    let result = loop {
         tokio::select! {
-            result=&mut run=>{ result?;break; }
+            result=&mut run=>break result.map_err(anyhow::Error::from),
             event=events.recv()=>match event {
                 Ok(RtcEvent::Connected)=>println!("native publisher connected"),
                 Ok(RtcEvent::Negotiated { .. })=>println!("native tracks negotiated"),
-                Ok(RtcEvent::Error { code,message })=>anyhow::bail!("{code}: {message}"),
-                Ok(RtcEvent::DeviceError(error))=>anyhow::bail!("{error}"),
-                Err(broadcast::error::RecvError::Closed)=>break,
+                Ok(RtcEvent::Error { code,message })=>break Err(anyhow::anyhow!("{code}: {message}")),
+                Ok(RtcEvent::DeviceError(error))=>break Err(anyhow::anyhow!(error)),
+                Err(broadcast::error::RecvError::Closed)=>break Ok(()),
                 _=>{}
             },
             _=&mut deadline,if !leaving=>{ leaving=true;commands.send(Command::Leave).await?; }
             _=tokio::signal::ctrl_c(),if !leaving=>{ leaving=true;commands.send(Command::Leave).await?; }
         }
-    }
-    stop.store(true, std::sync::atomic::Ordering::Relaxed);
+    };
+    stop.store(true, Ordering::Relaxed);
     capture_task.await??;
     #[cfg(all(target_os = "linux", feature = "linux-capture"))]
     if let Some(task) = audio_task {
         task.await??;
     }
-    Ok(())
+    result
 }
 fn measure(
-    mut capture: Box<dyn ScreenCapturer>,
+    capture: &mut dyn ScreenCapturer,
     first: pingo_media::video::capture::CapturedFrame,
     config: VideoPublishConfig,
     seconds: u64,

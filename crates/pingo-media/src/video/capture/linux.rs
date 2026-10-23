@@ -13,7 +13,7 @@ use std::{
     os::fd::OwnedFd,
     rc::Rc,
     sync::{
-        Arc,
+        Arc, Condvar, Mutex,
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
@@ -28,20 +28,61 @@ fn capture_error(e: impl std::fmt::Display) -> VideoError {
 struct Worker<T> {
     stop: Arc<AtomicBool>,
     thread: Option<thread::JoinHandle<()>>,
-    frames: mpsc::Receiver<Result<T>>,
+    frames: FrameReceiver<T>,
+}
+enum FrameReceiver<T> {
+    Ordered(mpsc::Receiver<Result<T>>),
+    Latest(Arc<LatestFrame<T>>),
+}
+
+// Video must replace stale frames while a consumer is busy encoding. Dropping
+// new frames from a full FIFO would keep delivering an old desktop image.
+struct LatestFrame<T> {
+    state: Mutex<(Option<Result<T>>, bool)>,
+    changed: Condvar,
+}
+impl<T> LatestFrame<T> {
+    fn new() -> Self {
+        Self {
+            state: Mutex::new((None, false)),
+            changed: Condvar::new(),
+        }
+    }
+    fn push(&self, frame: Result<T>) {
+        let mut state = self.state.lock().unwrap();
+        // Keep a terminal stream error visible even if another process callback runs.
+        if !matches!(state.0, Some(Err(_))) {
+            state.0 = Some(frame);
+        }
+        self.changed.notify_one();
+    }
+    fn close(&self) {
+        self.state.lock().unwrap().1 = true;
+        self.changed.notify_one();
+    }
+    fn next(&self, timeout: Duration) -> Result<Option<T>> {
+        let (mut state, _) = self
+            .changed
+            .wait_timeout_while(self.state.lock().unwrap(), timeout, |state| {
+                state.0.is_none() && !state.1
+            })
+            .unwrap();
+        match state.0.take() {
+            Some(frame) => frame.map(Some),
+            None if state.1 => Err(VideoError::Capture("PipeWire stream stopped".into())),
+            None => Ok(None),
+        }
+    }
 }
 impl<T> Worker<T> {
     fn next(&self, timeout: Duration) -> Result<Option<T>> {
-        match self.frames.recv_timeout(timeout) {
-            Ok(value) => {
-                let mut latest = value;
-                while let Ok(value) = self.frames.try_recv() {
-                    latest = value;
-                }
-                latest.map(Some)
-            }
-            Err(mpsc::RecvTimeoutError::Timeout) => Ok(None),
-            Err(_) => Err(VideoError::Capture("PipeWire stream stopped".into())),
+        match &self.frames {
+            FrameReceiver::Latest(frames) => frames.next(timeout),
+            FrameReceiver::Ordered(frames) => match frames.recv_timeout(timeout) {
+                Ok(value) => value.map(Some),
+                Err(mpsc::RecvTimeoutError::Timeout) => Ok(None),
+                Err(_) => Err(VideoError::Capture("PipeWire stream stopped".into())),
+            },
         }
     }
 }
@@ -315,23 +356,26 @@ fn serialize(object: spa::pod::Object) -> Result<Vec<u8>> {
     .map_err(capture_error)
 }
 fn video_worker(fd: Option<OwnedFd>, node: u32, fps: u32) -> Result<Worker<CapturedFrame>> {
-    let (tx, rx) = mpsc::sync_channel(2);
+    let frames = Arc::new(LatestFrame::new());
+    let tx = frames.clone();
     let stop = Arc::new(AtomicBool::new(false));
     let stopped = stop.clone();
     let (ready_tx, ready) = mpsc::sync_channel(1);
     let thread = thread::Builder::new()
         .name("pingo-video-capture".into())
         .spawn(move || {
-            let result = run_video(fd, node, fps, &stopped, tx.clone(), ready_tx);
+            let result = run_video(fd, node, fps, &stopped, tx.clone(), ready_tx.clone());
             if let Err(error) = result {
-                let _ = tx.try_send(Err(error));
+                let _ = ready_tx.try_send(Err(capture_error(&error)));
+                tx.push(Err(error));
             }
+            tx.close();
         })
         .map_err(capture_error)?;
     let worker = Worker {
         stop,
         thread: Some(thread),
-        frames: rx,
+        frames: FrameReceiver::Latest(frames),
     };
     ready
         .recv_timeout(Duration::from_secs(3))
@@ -343,7 +387,7 @@ fn run_video(
     node: u32,
     fps: u32,
     stop: &AtomicBool,
-    tx: mpsc::SyncSender<Result<CapturedFrame>>,
+    tx: Arc<LatestFrame<CapturedFrame>>,
     ready: mpsc::SyncSender<Result<()>>,
 ) -> Result<()> {
     pw::init();
@@ -370,7 +414,7 @@ fn run_video(
         .add_local_listener_with_user_data(spa::param::video::VideoInfoRaw::default())
         .state_changed(move |_, _, _, state| {
             if let pw::stream::StreamState::Error(error) = state {
-                let _ = errors.try_send(Err(capture_error(error)));
+                errors.push(Err(capture_error(error)));
             }
         })
         .param_changed(|_, info, id, param| {
@@ -438,7 +482,7 @@ fn run_video(
                 timestamp,
                 damage,
             };
-            let _ = tx.try_send(Ok(frame));
+            tx.push(Ok(frame));
         })
         .register()
         .map_err(capture_error)?;
@@ -536,7 +580,9 @@ impl AppAudioCapturer {
         let thread = thread::Builder::new()
             .name("pingo-share-audio".into())
             .spawn(move || {
-                if let Err(error) = run_audio(&node.serial, &stopped, tx.clone(), ready_tx) {
+                if let Err(error) = run_audio(&node.serial, &stopped, tx.clone(), ready_tx.clone())
+                {
+                    let _ = ready_tx.try_send(Err(capture_error(&error)));
                     let _ = tx.try_send(Err(error));
                 }
             })
@@ -544,7 +590,7 @@ impl AppAudioCapturer {
         let worker = Worker {
             stop,
             thread: Some(thread),
-            frames: rx,
+            frames: FrameReceiver::Ordered(rx),
         };
         ready
             .recv_timeout(Duration::from_secs(3))
@@ -557,11 +603,7 @@ impl AppAudioCapturer {
         let Some(worker) = &self.worker else {
             return Ok(None);
         };
-        match worker.frames.recv_timeout(timeout) {
-            Ok(frame) => frame.map(Some),
-            Err(mpsc::RecvTimeoutError::Timeout) => Ok(None),
-            Err(_) => Err(VideoError::Capture("app audio stream stopped".into())),
-        }
+        worker.next(timeout)
     }
     pub fn stop(&mut self) {
         self.worker.take();
@@ -656,6 +698,20 @@ fn run_audio(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn video_queue_replaces_old_frames_and_retains_terminal_errors() {
+        let queue = LatestFrame::new();
+        for frame in 0..100 {
+            queue.push(Ok(frame));
+        }
+        assert_eq!(queue.next(Duration::ZERO).unwrap(), Some(99));
+        assert_eq!(queue.next(Duration::ZERO).unwrap(), None);
+        queue.push(Err(VideoError::Capture("disconnected".into())));
+        queue.push(Ok(100));
+        queue.close();
+        assert!(queue.next(Duration::ZERO).is_err());
+        assert!(queue.next(Duration::ZERO).is_err());
+    }
     #[test]
     fn app_audio_rejects_call_output_and_unknown_owners() {
         let mut node = PipeWireNode {
