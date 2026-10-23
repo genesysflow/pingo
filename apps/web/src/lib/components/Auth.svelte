@@ -1,4 +1,7 @@
 <script lang="ts">
+  import { errorMessage } from '../data/errors';
+  import { onMount } from 'svelte';
+  import type { AuthProviders } from '@rxferrix/client';
   import Flourish from './Flourish.svelte';
   import { api, useAuth, useQuery, useMutation, isDemo } from '../data';
   import Avatar from './Avatar.svelte';
@@ -15,6 +18,8 @@
     name = $state(''),
     error = $state(''),
     busy = $state(false);
+  let providers = $state<AuthProviders | null>(null);
+  onMount(() => { void auth.providers().then(p => providers = p).catch(e => error = errorMessage(e)); });
   async function finish() {
     if (inviteCode) enter(await accept({ code: inviteCode }));
     else enter();
@@ -32,12 +37,17 @@
         await auth.requestMagicLink({ email, redirectTo: inviteCode ? location.href : location.origin });
         sent = true;
       } else {
-        if (signup) await auth.signUp({ email, password, name });
-        else await auth.signIn({ email, password });
+        if (signup) {
+          const result = await auth.signUp({ email, password, name });
+          if (result.verificationRequired) { error = 'Check your email to verify your address, then sign in.'; return; }
+        } else {
+          const result = await auth.signIn({ email, password });
+          if (result.mfaRequired) { error = 'This account requires a second factor. Please use a magic link or your account administrator.'; return; }
+        }
         await finish();
       }
     } catch (e) {
-      error = (e as Error).message;
+      error = errorMessage(e);
     } finally {
       busy = false;
     }
@@ -92,7 +102,7 @@
           </div>
           <span>{preview.data?.memberCount} people making good things.</span>
         </div>
-        <button class="button primary full" onclick={finish}
+        <button class="button primary full" disabled={!preview.data} onclick={() => finish().catch(e => error = errorMessage(e))}
           >Join {preview.data?.spaceName}<Icon name="arrowRight" size={17} /></button
         >
         <p class="muted tiny">
@@ -100,6 +110,7 @@
             ? 'Interactive demo · no account or email is required.'
             : 'A little room to make something together.'}
         </p>
+        {#if error}<p class="error" role="alert">{error}</p>{/if}
       {:else if sent}<span class="empty-icon"><Icon name="mail" size={32} /></span>
         <h2>A little note for you.</h2>
         <p class="settings-description">
@@ -125,15 +136,12 @@
               ? 'There’s always room for one more good person.'
               : 'Settle in. There’s a little catching up to do.'}
         </p>
-        <div class="oauth-buttons">
-          <button class="button" onclick={() => oauth('google')}><Icon name="globe" size={17} />Google</button
-          ><button class="button" onclick={() => oauth('github')}
-            ><Icon name="github" size={17} />GitHub</button
-          ><button class="button" onclick={() => oauth('discord')}
-            ><Icon name="headphones" size={17} />Discord</button
-          >
-        </div>
-        <div class="auth-divider"><span>or a little more familiar</span></div>
+        {#if providers?.oauth.length}<div class="oauth-buttons">
+          {#each providers.oauth as provider}<button class="button" onclick={() => oauth(provider)}>
+            <Icon name={provider === 'github' ? 'github' : provider === 'discord' ? 'headphones' : 'globe'} size={17} />
+            {provider === 'github' ? 'GitHub' : provider === 'discord' ? 'Discord' : provider === 'google' ? 'Google' : provider}
+          </button>{/each}
+        </div><div class="auth-divider"><span>or a little more familiar</span></div>{/if}
         <form onsubmit={submit}>
           {#if signup}<label class="field"
               >Your name<input
@@ -155,7 +163,7 @@
               >Password<input
                 type="password"
                 autocomplete={signup ? 'new-password' : 'current-password'}
-                minlength="6"
+                minlength="8"
                 bind:value={password}
                 required
                 placeholder="Your secret little phrase"
@@ -169,17 +177,17 @@
             /></button
           >
         </form>
-        <button class="magic-link" onclick={() => (magic = !magic)}
+        {#if providers?.magicLink}<button class="magic-link" onclick={() => (magic = !magic)}
           ><Icon name={magic ? 'lock' : 'mail'} size={15} />{magic
             ? 'Use a password instead'
             : 'Email me a magic link instead'}</button
         >
-        <p class="auth-switch">
+        {/if}{#if providers?.signups}<p class="auth-switch">
           {signup ? 'Already one of us?' : 'New around here?'}<button onclick={() => (signup = !signup)}
             >{signup ? 'Sign in' : 'Create an account'}<Icon name="upRight" size={13} /></button
           >
         </p>
-        {#if isDemo}<p class="demo-note">
+        {/if}{#if isDemo}<p class="demo-note">
             <Icon name="sparkles" size={14} />This is a local demo. Use any email and a 6-character password.<br
             />OAuth buttons simulate sign-in; no email is sent.
           </p>{/if}{/if}

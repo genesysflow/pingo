@@ -1,9 +1,11 @@
 <script lang="ts">
-  import { api, useMutation, type MessageView } from '../data';
+  import { errorMessage } from '../data/errors';
+  import { api, useMutation, useAuth, type MessageView } from '../data';
   import { emoji, formatBytes, formatTime } from '../logic/chat';
   import Avatar from './Avatar.svelte';
   import Icon from './Icon.svelte';
   import Markdown from './Markdown.svelte';
+  const auth = useAuth();
   let {
     message: m,
     grouped = false,
@@ -28,7 +30,7 @@
       await edit({ message: m._id, body: editBody });
       editing = false;
     } catch (e) {
-      error = (e as Error).message;
+      error = errorMessage(e);
     }
   }
 </script>
@@ -46,7 +48,7 @@
     >{/if}
   <div class="message-body">
     {#if !grouped}<div class="message-author">
-        <strong>{m.author.name}</strong>{#if m.author.user === 'you'}<span class="you-tag">you</span
+        <strong>{m.author.name}</strong>{#if m.author.user === auth.userId}<span class="you-tag">you</span
           >{/if}<time datetime={new Date(m._creationTime).toISOString()}>{formatTime(m._creationTime)}</time>
       </div>{/if}
     {#if m.deleted}<p class="muted"><i>This message was deleted.</i></p>
@@ -137,7 +139,7 @@
         ><Icon name="smile" size={16} /></button
       >{#if onThread}<button aria-label="Reply in thread" onclick={() => onThread?.(m._id)}
           ><Icon name="thread" size={16} /></button
-        >{/if}{#if m.author.user === 'you'}<button
+        >{/if}{#if m.author.user === auth.userId}<button
           aria-label="Edit message"
           onclick={() => {
             editBody = m.body;

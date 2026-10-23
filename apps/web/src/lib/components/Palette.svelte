@@ -1,8 +1,9 @@
 <script lang="ts">
   import { tick } from 'svelte';
-  import { api, useQuery, useMutation, type RoomSummary, type SpaceSummary } from '../data';
+  import { api, useQuery, useAuth, useMutation, type RoomSummary, type SpaceSummary } from '../data';
   import Icon from './Icon.svelte';
   import Modal from './Modal.svelte';
+  const auth = useAuth();
   let {
     space,
     rooms,
@@ -50,7 +51,7 @@
         },
       })),
       ...(members.data ?? [])
-        .filter((m) => m.user !== 'you')
+        .filter((m) => m.user !== auth.userId)
         .map((p) => ({
           title: p.name,
           detail: 'Direct message',

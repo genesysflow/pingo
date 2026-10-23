@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick, untrack } from 'svelte';
+  import { tick, untrack, onMount } from 'svelte';
   import { api, usePaginatedQuery, useQuery, useMutation, type RoomSummary } from '../data';
   import { isGrouped, sameDay } from '../logic/chat';
   import type { CallController } from '../call/controller.svelte';
@@ -125,6 +125,12 @@
     observer.observe(node);
     return { destroy: () => observer.disconnect() };
   }
+  onMount(() => {
+    const read = () => { if (!document.hidden) void markRead({ room: room._id }).catch(() => {}); };
+    read(); document.addEventListener('visibilitychange', read);
+    return () => document.removeEventListener('visibilitychange', read);
+  });
+  $effect(() => { const newest = messages.at(-1)?._id; if (newest && !document.hidden) void markRead({ room: room._id }).catch(() => {}); });
   function scroll() {
     scrollTop = scroller.scrollTop;
     atBottom = !openingId && scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 65;
@@ -161,7 +167,7 @@
         ><Icon name="headphones" size={15} />Hop in<Icon name="upRight" size={14} /></button
       >
     </div>{/if}
-  <div class="pinned-strip">
+  {#if messages.length}<div class="pinned-strip">
     <Icon name="pin" size={13} /><span>Our little corner of the creative process.</span><button
       onclick={() =>
         onThread(
@@ -169,6 +175,7 @@
         )}>The new direction <Icon name="right" size={12} /></button
     >
   </div>
+  {/if}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions (The scrollable log needs keyboard scrolling.) -->
   <div
     class="message-scroll"

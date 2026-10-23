@@ -1,10 +1,11 @@
 <script lang="ts">
   import Flourish from './Flourish.svelte';
-  import { api, useQuery, type RoomSummary } from '../data';
+  import { api, useQuery, useAuth, type RoomSummary } from '../data';
   import type { CallController } from '../call/controller.svelte';
   import { spatialAudio, type Point } from '../logic/lounge';
   import Avatar from './Avatar.svelte';
   import Icon from './Icon.svelte';
+  const auth = useAuth();
   let { room, call, join }: { room: RoomSummary; call: CallController; join: (room: RoomSummary) => void } =
     $props();
   const people = useQuery(api.voice.participants, () => ({ room: room._id }));
@@ -20,7 +21,7 @@
   };
   const others = $derived(
     (people.data ?? [])
-      .filter((p) => p.user !== 'you')
+      .filter((p) => p.user !== auth.userId)
       .map((p, i) => ({
         ...p,
         pos: positions[p.user] ?? { x: 180 + i * 140, y: 200 },

@@ -1,8 +1,9 @@
 <script lang="ts">
+  import { errorMessage } from './lib/data/errors';
   import Flourish from './lib/components/Flourish.svelte';
   import { onMount } from 'svelte';
-  import { api, useQuery, useMutation, useAuth, type RoomSummary, type PresenceStatus } from './lib/data';
-  import { initializeDemo, createDemoCall, startDemoActivity } from './lib/data/runtime';
+  import { api, useQuery, useMutation, useAuth, type RoomSummary, type PresenceStatus, isDemo } from './lib/data';
+  import { initializeDemo, createDemoCall, startActivity } from './lib/data/runtime';
   import Avatar from './lib/components/Avatar.svelte';
   import Icon from './lib/components/Icon.svelte';
   import Chat from './lib/components/Chat.svelte';
@@ -21,8 +22,8 @@
   const auth = useAuth(),
     call = createDemoCall();
   let path = $state(location.pathname),
-    space = $state(location.pathname.match(/^\/s\/([^/]+)/)?.[1] ?? 'fieldwork'),
-    roomId = $state(location.pathname.match(/\/r\/([^/]+)/)?.[1] ?? 'design');
+    space = $state(location.pathname.match(/^\/s\/([^/]+)/)?.[1] ?? (isDemo ? 'fieldwork' : '')),
+    roomId = $state(location.pathname.match(/\/r\/([^/]+)/)?.[1] ?? (isDemo ? 'design' : ''));
   let view = $state<'chat' | 'inbox' | 'settings'>(
     location.pathname === '/catch-up' ? 'inbox' : location.pathname === '/settings' ? 'settings' : 'chat',
   );
@@ -51,12 +52,21 @@
   let pendingCall: RoomSummary | null = null,
     toastTimer: ReturnType<typeof setTimeout>;
   const spaces = useQuery(api.spaces.list, () => (auth.isAuthenticated ? {} : 'skip')),
-    rooms = useQuery(api.rooms.list, () => (auth.isAuthenticated ? { space } : 'skip')),
+    rooms = useQuery(api.rooms.list, () => (auth.isAuthenticated && space ? { space } : 'skip')),
     me = useQuery(api.profiles.me),
     dms = useQuery(api.dms.list, () => (auth.isAuthenticated ? {} : 'skip')),
     inboxCount = useQuery(api.inbox.count, () => (auth.isAuthenticated ? {} : 'skip'));
-  const currentRoom = useQuery(api.rooms.get, () => (auth.isAuthenticated ? { room: roomId } : 'skip'));
-  const callRoom = useQuery(api.rooms.get, () => (call.room ? { room: call.room } : 'skip'));
+  const roomInfo = useQuery(api.rooms.get, () => (auth.isAuthenticated && roomId ? { room: roomId } : 'skip'));
+  const callInfo = useQuery(api.rooms.get, () => (call.room ? { room: call.room } : 'skip'));
+  const currentRoom = $derived({ data: roomInfo.data ? {
+    ...roomInfo.data,
+    unread: rooms.data?.find(r => r._id === roomId)?.unread ?? 0,
+    mentions: rooms.data?.find(r => r._id === roomId)?.mentions ?? 0,
+    voice: rooms.data?.find(r => r._id === roomId)?.voice ?? [],
+  } : undefined });
+  const callRoom = $derived({ data: callInfo.data ? {
+    ...callInfo.data, unread: 0, mentions: 0, voice: [],
+  } : undefined });
   const currentSpace = $derived(spaces.data?.find((s) => s._id === space));
   const createSpace = useMutation(api.spaces.create),
     createRoom = useMutation(api.rooms.create),
@@ -75,7 +85,7 @@
   }
   function navigate(id: string, nextSpace?: string) {
     if (nextSpace) space = nextSpace;
-    if (!id) id = rooms.data?.[0]?._id ?? 'design';
+    if (!id) id = rooms.data?.[0]?._id ?? (isDemo ? 'design' : '');
     roomId = id;
     view = 'chat';
     stage = false;
@@ -91,11 +101,22 @@
     thread = null;
     members = false;
     mobileSidebar = false;
-    const first = await new Promise<string>((resolve) =>
-      queueMicrotask(() => resolve(rooms.data?.[0]?._id ?? 'design')),
-    );
-    navigate(first, id);
+    roomId = '';
+    route(`/s/${id}`);
   }
+  // Live queries arrive asynchronously; wait for each selected space's actual room list.
+  $effect(() => {
+    if (!auth.isAuthenticated || !spaces.data) return;
+    if (!spaces.data.some(s => s._id === space)) {
+      space = spaces.data[0]?._id ?? '';
+      roomId = '';
+    }
+    if (space && !roomId && rooms.data?.length) navigate(rooms.data[0]._id);
+  });
+  $effect(() => {
+    if (auth.isAuthenticated) void heartbeat().catch(e => notice(errorMessage(e)));
+  });
+
   function catchUp() {
     view = 'inbox';
     stage = false;
@@ -139,7 +160,7 @@
         navigate(room._id);
       } else view = 'chat';
     } catch (e) {
-      notice((e as Error).message);
+      notice(errorMessage(e));
     }
   }
   async function completeSound() {
@@ -219,7 +240,7 @@
       createName = '';
       joinCode = '';
     } catch (e) {
-      formError = (e as Error).message;
+      formError = errorMessage(e);
     }
   }
   $effect(() => {
@@ -234,10 +255,10 @@
           else navigate(roomId);
         } else if (result?.type === 'error') notice(result.error.message);
       })
-      .catch((e) => notice((e as Error).message));
-    const stop = startDemoActivity();
+      .catch((e) => notice(errorMessage(e)));
+    const stop = startActivity();
     const interval = setInterval(() => {
-      if (auth.isAuthenticated) void heartbeat();
+      if (auth.isAuthenticated) void heartbeat().catch(e => notice(errorMessage(e)));
     }, 60_000);
     return () => {
       stop();
@@ -283,14 +304,27 @@
   {#if !auth.isAuthenticated || inviteCode || path === '/signin' || path === '/signup'}<Auth
       {inviteCode}
       enter={(s) => {
-        if (s) space = s;
-        navigate('design', s ?? 'fieldwork');
+        if (isDemo) navigate('design', s ?? 'fieldwork');
+        else { roomId = ''; if (s) space = s; route(s ? `/s/${s}` : '/'); }
       }}
     />
+  {:else if spaces.isLoading}<main class="empty-state" aria-busy="true">Finding your people…</main>
+  {:else if spaces.error}<main class="empty-state"><p role="alert">{errorMessage(spaces.error)}</p><button class="button" onclick={() => auth.signOut()}>Sign out</button></main>
+  {:else if spaces.data?.length === 0}<main class="empty-state onboarding">
+    <img src="/pingo.svg" width="64" alt="Pingo" />
+    <h1>Make a little space.</h1><p>Create a space for your people, or paste an invite to join them.</p>
+    <form onsubmit={e => { modal = 'space'; void submitCreate(e); }}>
+      <label class="field">Space name<input bind:value={createName} maxlength="32" required={!joinCode} /></label>
+      <div class="auth-divider"><span>or come on in</span></div>
+      <label class="field">Invite link or code<input bind:value={joinCode} /></label>
+      {#if formError}<p class="error" role="alert">{formError}</p>{/if}
+      <button class="button primary">{joinCode ? 'Join your people' : 'Create space'}</button>
+    </form><button class="text-button" onclick={() => auth.signOut()}>Sign out</button>
+  </main>
   {:else}
     <a href="#main-content" class="skip-link">Skip to conversation</a>
     <nav class="space-rail" aria-label="Spaces">
-      <button class="pingo-mark" aria-label="Pingo home" onclick={() => navigate('design', 'fieldwork')}
+      <button class="pingo-mark" aria-label="Pingo home" onclick={() => { roomId = ''; route('/'); }}
         ><img src="/pingo.svg" alt="Pingo" /></button
       ><span class="rail-divider"></span>{#each spaces.data ?? [] as s, i}<button
           class="space-icon"
@@ -625,7 +659,7 @@
       }}
       complete={completeSound}
     />{/if}
-  {#if modal === 'space' || modal === 'room'}<Modal
+  {#if (modal === 'space' || modal === 'room') && spaces.data?.length}<Modal
       title={modal === 'space' ? 'Make a little space.' : 'A new room for good ideas.'}
       close={() => (modal = null)}
       ><p class="settings-description">

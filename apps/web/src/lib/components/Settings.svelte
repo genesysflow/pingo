@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { errorMessage } from '../data/errors';
   import { untrack } from 'svelte';
   import { api, useQuery, useMutation, useAuth, type PresenceStatus } from '../data';
   import type { CallController } from '../call/controller.svelte';
@@ -67,7 +68,7 @@
       } else if (tab === 'Space') await updateSpace({ space, name: spaceName, accent });
       notice('A little more you. Changes saved.');
     } catch (e) {
-      error = (e as Error).message;
+      error = errorMessage(e);
     }
   }
   async function notificationChange() {
@@ -225,7 +226,7 @@
         <h3>Video, when it’s ready.</h3>
         <p class="settings-description">
           Camera capture will arrive with the browser media engine. You can already share a design preview and
-          try pointers and annotations in the demo call.
+          point and draw while someone shares a screen.
         </p>
       {:else if tab === 'Notifications'}<p class="settings-description">
           Stay in the loop, without being pulled out of your flow.
@@ -263,7 +264,7 @@
         ><button class="button primary" onclick={save}>Save space<Icon name="check" size={15} /></button>
         <h3>Good people welcome.</h3>
         <p class="settings-description">
-          Invite someone to pull up a chair. Demo invites are previewable locally.
+          Invite someone to pull up a chair. Invite links can be shared with anyone you want to join.
         </p>
         <button
           class="button"
@@ -303,6 +304,6 @@
     </div>
   </div>
   <div class="settings-footnote">
-    Made for a little less noise, and a little more connection. <span>Pingo · interactive demo</span>
+    Made for a little less noise, and a little more connection. <span>Pingo</span>
   </div>
 </div>

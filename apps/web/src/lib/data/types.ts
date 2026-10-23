@@ -46,7 +46,7 @@ export interface VoiceParticipant {
 }
 export interface RoomSummary {
   _id: string;
-  space?: string;
+  space?: string | null;
   name: string;
   topic: string;
   kind: RoomKind;
