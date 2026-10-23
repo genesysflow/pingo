@@ -2140,8 +2140,12 @@ dependencies = [
 name = "pingo-server"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "pingo-proto",
  "rxferrix",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
