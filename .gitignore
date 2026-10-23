@@ -1,0 +1,10 @@
+/target
+**/target
+node_modules/
+dist/
+fx_data/
+*.db
+*.db-wal
+*.db-shm
+.env
+.DS_Store

@@ -1,0 +1,10 @@
+[package]
+name = "pingo-sfu"
+description = "Selective forwarding unit on str0m, mounted in pingo-server at /rtc (or run standalone)"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pingo-proto = { workspace = true }

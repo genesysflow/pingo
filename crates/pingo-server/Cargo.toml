@@ -1,0 +1,11 @@
+[package]
+name = "pingo-server"
+description = "The Pingo backend: an RxFerrix app (data, auth, files, search) that also mounts the SFU"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+pingo-proto = { workspace = true }
+rxferrix = { workspace = true }

@@ -1,0 +1,8 @@
+# Bundled SQLite flags required by RxFerrix so reader connections run in parallel
+# (see rxferrix docs/operations/deploying.md). rxferrix warns at startup when missing.
+[env]
+LIBSQLITE3_FLAGS = "-USQLITE_ENABLE_MEMORY_MANAGEMENT -DSQLITE_DEFAULT_MEMSTATUS=0"
+
+[build]
+# Several agents build in parallel on one 16-core / 32 GB machine; keep each build modest.
+jobs = 6

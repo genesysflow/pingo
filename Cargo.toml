@@ -1,0 +1,23 @@
+[workspace]
+resolver = "3"
+members = ["crates/pingo-proto", "crates/pingo-server", "crates/pingo-sfu", "crates/pingo-media"]
+
+[workspace.package]
+edition = "2024"
+version = "0.1.0"
+license = "MIT"
+publish = false
+
+[workspace.dependencies]
+pingo-proto = { path = "crates/pingo-proto" }
+pingo-sfu = { path = "crates/pingo-sfu" }
+pingo-media = { path = "crates/pingo-media" }
+rxferrix = "0.6.1"
+str0m = "0.24"
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.8", features = ["ws"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tracing = "0.1"
+anyhow = "1"
