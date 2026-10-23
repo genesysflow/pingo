@@ -11,6 +11,7 @@ mod dms;
 mod files;
 mod inbox;
 mod invites;
+mod media;
 mod messages;
 mod model;
 mod presence;
@@ -26,9 +27,8 @@ mod voice;
 use rxferrix::RxFerrix;
 use rxferrix::auth::{AuthConfig, Discord, GitHub, Google};
 
-/// Integration point: merge `pingo_sfu::Sfu::router()` here using `app_routes` in the integration step.
-fn mount_media(app: RxFerrix) -> RxFerrix {
-    app
+fn mount_media(app: RxFerrix) -> rxferrix::Result<RxFerrix> {
+    Ok(app.app_routes(media::Media::from_env()?.router()))
 }
 
 fn main() -> rxferrix::Result<()> {
@@ -59,5 +59,5 @@ fn main() -> rxferrix::Result<()> {
     if let Some(dir) = std::env::var_os("PINGO_WEB_DIR").filter(|d| !d.is_empty()) {
         app = app.static_dir(dir);
     }
-    mount_media(app).run()
+    mount_media(app)?.run()
 }

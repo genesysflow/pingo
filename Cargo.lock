@@ -2962,11 +2962,19 @@ dependencies = [
 name = "pingo-server"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "axum",
  "bitflags 2.13.2",
+ "futures-util",
  "pingo-proto",
+ "pingo-sfu",
+ "reqwest",
  "rxferrix",
  "serde_json",
+ "str0m",
  "tokio",
+ "tokio-tungstenite 0.29.0",
+ "tower",
  "tracing",
 ]
 
