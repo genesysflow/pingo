@@ -24,6 +24,7 @@ pub(crate) enum Signal {
 pub(crate) enum Command {
     Join {
         token: String,
+        media_secret: Option<Vec<u8>>,
         out: mpsc::Sender<Signal>,
         reply: oneshot::Sender<Option<String>>,
     },
@@ -493,8 +494,16 @@ impl Engine {
     fn command(&mut self, command: Command) {
         let now = Instant::now();
         match command {
-            Command::Join { token, out, reply } => {
-                let claims = match verify_join(&token, &self.cfg.media_secret) {
+            Command::Join {
+                token,
+                media_secret,
+                out,
+                reply,
+            } => {
+                let claims = match verify_join(
+                    &token,
+                    media_secret.as_deref().unwrap_or(&self.cfg.media_secret),
+                ) {
                     Ok(claims) => claims,
                     Err(message) => {
                         let _ = out.try_send(Signal::Message(ServerMsg::Error {
@@ -802,6 +811,7 @@ mod tests {
             let (reply, response) = oneshot::channel();
             engine.command(Command::Join {
                 token: token::sign(&claims, b"secret"),
+                media_secret: None,
                 out,
                 reply,
             });

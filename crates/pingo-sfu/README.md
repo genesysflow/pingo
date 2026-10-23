@@ -5,6 +5,15 @@ An embedded or standalone str0m 0.24 SFU. The backend can merge
 only `GET /rtc`. `Sfu::udp_addr()` exposes ephemeral bindings and
 `Sfu::shutdown().await` closes sessions and drains voice hooks.
 
+Embedded backends with live environment settings can use
+`Sfu::start_with_secret_provider(config, hooks, Arc<dyn MediaSecretProvider>)`.
+The provider resolves the current key for each initial WebSocket Join, outside
+the media task, with a two-second deadline. `None`, an empty key or a timeout
+rejects admission. In this mode `config.media_secret` is ignored and may be
+empty. Static `Sfu::start` callers retain their existing behavior. Rotating the
+key rejects subsequent admissions using old tokens; established sessions stay
+connected. The provider controls any development fallback policy.
+
 ## How it runs
 
 One Tokio task owns the shared UDP socket, rooms and every participant's `Rtc`.

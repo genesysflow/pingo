@@ -58,6 +58,13 @@ pub trait VoiceHooks: Send + Sync + 'static {
     async fn on_leave(&self, room: &str, user: &str);
 }
 
+/// Resolves the current admission key outside the media loop. Returning `None`
+/// refuses admission; providers must never substitute a production fallback.
+#[async_trait]
+pub trait MediaSecretProvider: Send + Sync + 'static {
+    async fn media_secret(&self) -> Option<Vec<u8>>;
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum SfuError {
     #[error("invalid SFU configuration: {0}")]
@@ -91,11 +98,29 @@ pub struct Sfu {
     commands: mpsc::Sender<Command>,
     counters: Arc<Counters>,
     udp_addr: SocketAddr,
+    secret_provider: Option<Arc<dyn MediaSecretProvider>>,
 }
 
 impl Sfu {
     pub async fn start(cfg: SfuConfig, hooks: Arc<dyn VoiceHooks>) -> Result<Self, SfuError> {
-        if cfg.media_secret.is_empty() {
+        Self::start_inner(cfg, hooks, None).await
+    }
+
+    /// Dynamic keys are fetched for each Join, so dashboard rotation needs no restart.
+    pub async fn start_with_secret_provider(
+        cfg: SfuConfig,
+        hooks: Arc<dyn VoiceHooks>,
+        provider: Arc<dyn MediaSecretProvider>,
+    ) -> Result<Self, SfuError> {
+        Self::start_inner(cfg, hooks, Some(provider)).await
+    }
+
+    async fn start_inner(
+        cfg: SfuConfig,
+        hooks: Arc<dyn VoiceHooks>,
+        secret_provider: Option<Arc<dyn MediaSecretProvider>>,
+    ) -> Result<Self, SfuError> {
+        if secret_provider.is_none() && cfg.media_secret.is_empty() {
             return Err(SfuError::Config("media_secret must not be empty".into()));
         }
         let socket = UdpSocket::bind(cfg.udp_bind).await?;
@@ -109,6 +134,7 @@ impl Sfu {
             commands,
             counters,
             udp_addr,
+            secret_provider,
         })
     }
 
@@ -170,11 +196,34 @@ impl Sfu {
                 return;
             }
         };
+        // Database/network-backed providers never run on the sans-IO engine task.
+        let media_secret = if let Some(provider) = &self.secret_provider {
+            match tokio::time::timeout(Duration::from_secs(2), provider.media_secret()).await {
+                Ok(Some(secret)) if !secret.is_empty() => Some(secret),
+                _ => {
+                    tracing::warn!("media admission key unavailable");
+                    reject(
+                        &mut socket,
+                        "invalid_token",
+                        "media admission is unavailable",
+                    )
+                    .await;
+                    return;
+                }
+            }
+        } else {
+            None
+        };
         let (out, mut incoming) = mpsc::channel(128);
         let (reply, joined) = oneshot::channel();
         if self
             .commands
-            .send(Command::Join { token, out, reply })
+            .send(Command::Join {
+                token,
+                media_secret,
+                out,
+                reply,
+            })
             .await
             .is_err()
         {
