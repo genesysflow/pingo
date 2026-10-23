@@ -26,30 +26,47 @@ pub struct JoinResult {
     #[ts(type = "\"/rtc\"")]
     pub url: String,
 }
-#[mutation]
-pub async fn join(ctx: &MutationCtx, room: Id<Room>) -> Result<JoinResult> {
-    let user = ctx.auth.require_user()?;
-    let (_, perms) = require_room(&ctx.db, room, user, Perm::VIEW).await?;
-    let secret = match ctx
-        .env
+// Signing and admission share the exact same missing/empty-key and dev policy.
+pub async fn media_secret(env: &rxferrix::env::Env, dev: bool) -> Result<String> {
+    match env
         .get("PINGO_MEDIA_SECRET")
         .await?
         .filter(|s| !s.is_empty())
     {
-        Some(s) => s,
-        None if ctx.is_dev() => {
+        Some(s) => Ok(s),
+        None if dev => {
             tracing::warn!(
                 "PINGO_MEDIA_SECRET is unset; using the insecure development media secret"
             );
-            DEV_MEDIA_SECRET.into()
+            Ok(DEV_MEDIA_SECRET.into())
         }
-        None => {
-            return Err(user_error(
-                "forbidden",
-                "PINGO_MEDIA_SECRET is unset; configure it in Environment or with `pingo-server env set PINGO_MEDIA_SECRET`",
-            ));
-        }
-    };
+        None => Err(user_error(
+            "forbidden",
+            "PINGO_MEDIA_SECRET is unset; configure it in Environment or with `pingo-server env set PINGO_MEDIA_SECRET`",
+        )),
+    }
+}
+
+#[internal_query]
+pub async fn admission_secret(ctx: &QueryCtx) -> Result<String> {
+    media_secret(&ctx.env, ctx.is_dev()).await
+}
+
+/// Clear in bounded transactions before the fresh SFU can accept any sessions.
+#[internal_mutation]
+pub async fn reset(ctx: &MutationCtx) -> Result<u32> {
+    let rows = ctx.db.query::<VoiceState>().take(500).await?;
+    for row in &rows {
+        ctx.db.delete(row.id).await?;
+    }
+    Ok(rows.len() as u32)
+}
+
+#[mutation]
+pub async fn join(ctx: &MutationCtx, room: Id<Room>) -> Result<JoinResult> {
+    let user = ctx.auth.require_user()?;
+    let (_, perms) = require_room(&ctx.db, room, user, Perm::VIEW).await?;
+    let secret = media_secret(&ctx.env, ctx.is_dev()).await?;
     let (name, color, _) = crate::profiles::identity(&ctx.db, user).await?;
     let claims = MediaClaims {
         room: room.to_string(),
