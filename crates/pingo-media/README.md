@@ -323,3 +323,36 @@ a small hardware frame pool and runtime OpenH264 fallback on initialization,
 encoding or bitrate-reconfiguration failure. `PINGO_VAAPI_DEVICE` selects a
 render node (default `/dev/dri/renderD128`). FFmpeg/libva headers and libraries
 are required for these optional features. DMA-BUF zero-copy and NVENC are absent.
+
+## Native video RTC API (Part C)
+
+`Command::PublishVideo { source, config: Some(config) }` starts an encoder
+worker and publishes screen/camera simulcast; `None` stops/unpublishes it.
+Feed `Command::VideoFrame { source, frame }` from your capture worker.
+`Command::EncodedVideo` permits an external encoder (its frames must have a
+negotiated RID); low-level `Session::set_video_published`/`send_video` also work.
+Encoding queues are bounded, capture frames may be dropped under load, and an
+encoded-output overflow requests fresh independent keyframes. The RTC worker
+services encoded output every 10 ms without encoding on the audio/UDP clock.
+
+`PublishScreenAudio(true)` plus `CaptureScreenAudio` sends an independent
+192 kbps stereo Opus/AUDIO stream, with no AEC/AGC/denoiser. Capture it with
+`AppAudioCapturer` to exclude call output. The microphone and screen-audio
+packet clocks and remote playout buffers are independent.
+
+`RtcEvent::VideoFrame { track, frame }` carries participant/mid/kind, codec,
+monotonic media timestamp, keyframe flag and shared encoded bytes (H.264 Annex B
+or raw VP8). Received width/height are zero: the decoder obtains dimensions
+from SPS/VP8 headers. This is ready to forward to the desktop app's encoded
+frame channel; WebCodecs H.264 must accept Annex B or the consumer must convert
+it to AVCC. Broadcast consumers must handle `Lagged` by requesting a keyframe
+with `Command::RequestVideoKeyframe`. `SetVideoQuality` selects remote height,
+including zero to pause. `VideoKeyframeRequested` and `BandwidthEstimate` events
+are also exposed for external encoders; built-in workers consume them directly.
+
+The client now uses str0m's frame API for both audio and video, leaving RTP
+packetization, retransmission and video depacketization to str0m. Existing Opus
+level headers and adaptive playout remain covered by regression tests. Start,
+stop and configuration changes serialize through the existing client-wins SDP
+glare rule, including commands received while an offer is awaiting an answer.
+No `pingo-proto` or backend/UI contract changes were needed.

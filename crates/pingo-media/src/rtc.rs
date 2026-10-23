@@ -10,6 +10,12 @@ use crate::{
     pipeline::{AudioSettings, QualityReport, ReceivePipeline, SendPipeline},
 };
 use futures_util::{SinkExt, StreamExt};
+mod video;
+use crate::video::{
+    capture::CapturedFrame,
+    encode::{EncodedVideoFrame, VideoCodec},
+    simulcast::{VideoPublishConfig, VideoSource},
+};
 use pingo_proto::{
     ClientMsg, DataMsg, ParticipantInfo, ServerMsg, TrackInfo, TrackKind, signal::PublishedTrack,
 };
@@ -20,18 +26,22 @@ use std::{
 };
 use str0m::{
     Candidate, Event, Input, Output, Rtc,
+    bwe::Bitrate,
+    bwe::BweKind,
     change::{SdpAnswer, SdpOffer, SdpPendingOffer},
     channel::ChannelId,
     format::{Codec, FormatParams},
     media::{Direction, Frequency, MediaKind, Mid},
+    media::{KeyframeRequestKind, MediaTime},
     net::{Protocol, Receive},
-    rtp::{Extension, ExtensionValues, RtpWrite},
+    rtp::Extension,
 };
 use tokio::{
     net::{TcpStream, UdpSocket},
     sync::{broadcast, mpsc},
 };
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, tungstenite::Message};
+use video::LocalPublication;
 
 fn rtc_error(error: impl std::fmt::Display) -> Error {
     Error::Rtc(error.to_string())
@@ -57,6 +67,19 @@ pub enum RtcEvent {
         remote_sdp: String,
     },
     PlayoutStats(HashMap<String, JitterStats>),
+    /// Complete depacketized encoded frame; H264 uses Annex B, VP8 is raw.
+    /// Width/height are zero until the consumer parses the codec headers.
+    VideoFrame {
+        track: TrackInfo,
+        frame: EncodedVideoFrame,
+    },
+    VideoKeyframeRequested {
+        source: VideoSource,
+        rid: Option<String>,
+    },
+    BandwidthEstimate {
+        bits_per_second: u64,
+    },
     Connected,
     Disconnected,
     Data(DataMsg),
@@ -86,15 +109,18 @@ pub struct Session {
     pub receiver: ReceivePipeline,
     settings: AudioSettings,
     epoch: Instant,
-    tx_sequence: Option<u64>,
+    tx_timestamp: Option<u64>,
+    publications: HashMap<TrackKind, LocalPublication>,
     pub rtt_ms: f32,
     pub outgoing_loss_percent: f32,
 }
 impl Session {
     pub fn new(now: Instant, candidates: &[SocketAddr], settings: AudioSettings) -> Result<Self> {
         let mut config = Rtc::builder()
-            .set_rtp_mode(true)
             .clear_codecs()
+            .enable_vp8(true)
+            .enable_h264(true)
+            .enable_bwe(Some(Bitrate::mbps(4)))
             .set_extension(1, Extension::AudioLevel)
             .set_stats_interval(Some(Duration::from_secs(1)));
         // Always negotiate stereo reception and permit Studio without renegotiation.
@@ -135,7 +161,8 @@ impl Session {
             receiver: ReceivePipeline::new(settings.clone()),
             settings,
             epoch: now,
-            tx_sequence: None,
+            tx_timestamp: None,
+            publications: HashMap::new(),
             rtt_ms: 0.0,
             outgoing_loss_percent: 0.0,
         })
@@ -212,6 +239,9 @@ impl Session {
                     .accept_answer(pending, answer)
                     .map_err(rtc_error)?;
                 self.negotiated_audio = self.offered_audio;
+                for publication in self.publications.values_mut() {
+                    publication.negotiated = publication.offered.clone();
+                }
                 self.events.push_back(RtcEvent::Negotiated {
                     local_sdp: self.local_sdp.clone(),
                     remote_sdp: sdp,
@@ -248,6 +278,8 @@ impl Session {
                         self.receiver.add_participant(track_key(&track))?;
                     }
                 }
+                self.tracks
+                    .insert(Mid::from(track.mid.as_str()), track.clone());
                 self.apply_receive_settings();
                 self.events.push_back(RtcEvent::TrackPublished(track));
             }
@@ -327,43 +359,80 @@ impl Session {
                     self.outgoing_loss_percent = loss * 100.0;
                 }
             }
-            Event::RtpPacket(packet) => {
-                let mid = self
-                    .rtc
-                    .direct_api()
-                    .stream_rx(&packet.header.ssrc)
-                    .map(|s| s.mid());
-                if let Some(track) = mid.and_then(|mid| self.tracks.get(&mid)) {
-                    let samples = opus::packet::get_nb_samples(&packet.payload, 48_000);
-                    let duration = match samples {
-                        Ok(480) => PacketDuration::LowLatency10,
-                        Ok(960) => PacketDuration::Default20,
-                        _ => return Ok(()),
-                    };
-                    let audio_level = packet
-                        .header
-                        .ext_vals
-                        .audio_level
-                        .unwrap_or(-127)
-                        .unsigned_abs()
-                        .min(127);
-                    let encoded = EncodedPacket {
-                        sequence: packet.header.sequence_number,
-                        timestamp: packet.header.timestamp,
-                        duration,
-                        payload: packet.payload.to_vec(),
-                        audio_level,
-                        speaking: packet.header.ext_vals.voice_activity.unwrap_or(false),
-                    };
-                    let arrival = packet
-                        .timestamp
-                        .saturating_duration_since(self.epoch)
-                        .as_secs_f64()
-                        * 1000.0;
-                    if let Err(error) = self.receiver.push(&track_key(track), encoded, arrival) {
-                        tracing::debug!(%error, "discarding invalid audio RTP");
+            Event::MediaData(data) => {
+                if let Some(track) = self.tracks.get(&data.mid).cloned() {
+                    if matches!(track.kind, TrackKind::Camera | TrackKind::Screen) {
+                        let codec = match data.params.spec().codec {
+                            Codec::H264 => VideoCodec::H264,
+                            Codec::Vp8 => VideoCodec::Vp8,
+                            _ => return Ok(()),
+                        };
+                        let keyframe = data.is_keyframe();
+                        if !data.contiguous {
+                            self.request_video_keyframe(&track.mid)?;
+                        }
+                        self.events.push_back(RtcEvent::VideoFrame {
+                            track,
+                            frame: EncodedVideoFrame {
+                                codec,
+                                data: data.data,
+                                timestamp: Duration::from_secs_f64(data.time.as_seconds()),
+                                keyframe,
+                                width: 0,
+                                height: 0,
+                                rid: data.rid.map(|rid| rid.to_string()),
+                            },
+                        });
+                    } else {
+                        let duration = match opus::packet::get_nb_samples(&data.data, 48_000) {
+                            Ok(480) => PacketDuration::LowLatency10,
+                            Ok(960) => PacketDuration::Default20,
+                            _ => return Ok(()),
+                        };
+                        let encoded = EncodedPacket {
+                            sequence: **data.seq_range.start() as u16,
+                            timestamp: data.time.rebase(Frequency::FORTY_EIGHT_KHZ).numer() as u32,
+                            duration,
+                            payload: data.data.to_vec(),
+                            audio_level: data
+                                .ext_vals
+                                .audio_level
+                                .unwrap_or(-127)
+                                .unsigned_abs()
+                                .min(127),
+                            speaking: data.ext_vals.voice_activity.unwrap_or(false),
+                        };
+                        let arrival = data
+                            .network_time
+                            .saturating_duration_since(self.epoch)
+                            .as_secs_f64()
+                            * 1000.0;
+                        if let Err(error) = self.receiver.push(&track_key(&track), encoded, arrival)
+                        {
+                            tracing::debug!(%error,"discarding invalid audio frame");
+                        }
                     }
                 }
+            }
+            Event::KeyframeRequest(request) => {
+                if let Some((kind, _)) = self
+                    .publications
+                    .iter()
+                    .find(|(_, p)| p.mid == Some(request.mid))
+                    && let Some(source) = video::source_kind(*kind)
+                {
+                    self.events.push_back(RtcEvent::VideoKeyframeRequested {
+                        source,
+                        rid: request.rid.map(|rid| rid.to_string()),
+                    });
+                }
+            }
+            Event::EgressBitrateEstimate(
+                BweKind::Twcc { estimate, .. } | BweKind::Remb { estimate, .. },
+            ) => {
+                self.events.push_back(RtcEvent::BandwidthEstimate {
+                    bits_per_second: estimate.as_u64(),
+                });
             }
             _ => {}
         }
@@ -416,23 +485,21 @@ impl Session {
             .find(|p| p.spec().codec == Codec::Opus && media.remote_pts().contains(&p.pt()))
             .map(|p| p.pt())
             .ok_or(Error::Invalid("remote did not accept Opus"))?;
-        let sequence = self.tx_sequence.map_or(packet.sequence as u64, |high| {
-            (high as i64 + packet.sequence.wrapping_sub(high as u16) as i16 as i64) as u64
+        let timestamp = self.tx_timestamp.map_or(packet.timestamp as u64, |high| {
+            (high as i64 + packet.timestamp.wrapping_sub(high as u32) as i32 as i64).max(0) as u64
         });
-        self.tx_sequence = Some(sequence);
-        let exts = ExtensionValues {
-            audio_level: Some(-(packet.audio_level.min(127) as i8)),
-            voice_activity: Some(packet.speaking),
-            ..Default::default()
-        };
-        let mut direct = self.rtc.direct_api();
-        let stream = direct
-            .stream_tx_by_mid(mid, None)
-            .ok_or(Error::Invalid("no audio sender"))?;
-        stream.write_rtp(
-            RtpWrite::new(pt, sequence.into(), packet.timestamp, now, packet.payload)
-                .ext_vals(exts),
-        );
+        self.tx_timestamp = Some(timestamp);
+        self.rtc
+            .writer(mid)
+            .ok_or(Error::Invalid("no audio sender"))?
+            .audio_level(-(packet.audio_level.min(127) as i8), packet.speaking)
+            .write(
+                pt,
+                now,
+                MediaTime::new(timestamp, Frequency::FORTY_EIGHT_KHZ),
+                packet.payload,
+            )
+            .map_err(rtc_error)?;
         Ok(true)
     }
     /// PublishTracks is a full snapshot. Inactive (rather than stopped) media
@@ -440,45 +507,6 @@ impl Session {
     pub fn set_audio_published(&mut self, published: bool) -> Result<()> {
         self.audio_published = published;
         self.offer_audio_change()
-    }
-
-    fn published_tracks(&self) -> Vec<PublishedTrack> {
-        self.audio_mid
-            .filter(|_| self.audio_published)
-            .into_iter()
-            .map(|mid| PublishedTrack {
-                mid: mid.to_string(),
-                kind: TrackKind::Audio,
-            })
-            .collect()
-    }
-
-    fn offer_audio_change(&mut self) -> Result<()> {
-        if !self.joined || self.pending.is_some() || self.negotiated_audio == self.audio_published {
-            return Ok(());
-        }
-        let mid = self.audio_mid.ok_or(Error::Invalid("no audio mid"))?;
-        let mut changes = self.rtc.sdp_api();
-        changes.set_direction(
-            mid,
-            if self.audio_published {
-                Direction::SendOnly
-            } else {
-                Direction::Inactive
-            },
-        );
-        if let Some((offer, pending)) = changes.apply() {
-            self.pending = Some(pending);
-            self.offered_audio = self.audio_published;
-            self.local_sdp = opus_sdp(offer.to_sdp_string());
-            self.outgoing.push_back(ClientMsg::Offer {
-                sdp: self.local_sdp.clone(),
-            });
-            self.outgoing.push_back(ClientMsg::PublishTracks {
-                tracks: self.published_tracks(),
-            });
-        }
-        Ok(())
     }
 
     pub fn send_data(&mut self, message: &DataMsg) -> Result<bool> {
@@ -525,11 +553,10 @@ impl Session {
         if changed {
             // A deliberate mute is not packet loss. Drop queued speech/PLC and
             // re-anchor the remote timeline when it resumes.
-            for track in self
-                .tracks
-                .values()
-                .filter(|t| t.participant_id == participant.participant_id)
-            {
+            for track in self.tracks.values().filter(|t| {
+                t.participant_id == participant.participant_id
+                    && matches!(t.kind, TrackKind::Audio | TrackKind::ScreenAudio)
+            }) {
                 let key = track_key(track);
                 self.receiver.remove_participant(&key);
                 self.receiver.add_participant(key)?;
@@ -587,6 +614,30 @@ pub enum Command {
     Data(DataMsg),
     PublishAudio(bool),
     Capture(Box<StereoFrame>),
+    /// Configuring None unpublishes; each start sends a full PublishTracks snapshot.
+    PublishVideo {
+        source: VideoSource,
+        config: Option<VideoPublishConfig>,
+    },
+    /// Raw capture enters a bounded encoding worker, separate from audio/UDP.
+    VideoFrame {
+        source: VideoSource,
+        frame: Box<CapturedFrame>,
+    },
+    /// External encoders may bypass the built-in worker.
+    EncodedVideo {
+        source: VideoSource,
+        frame: EncodedVideoFrame,
+    },
+    PublishScreenAudio(bool),
+    CaptureScreenAudio(Box<StereoFrame>),
+    SetVideoQuality {
+        mid: String,
+        max_height: u32,
+    },
+    RequestVideoKeyframe {
+        mid: String,
+    },
     Leave,
 }
 
@@ -670,6 +721,8 @@ impl Client {
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         let mut quality_tick = tokio::time::interval(Duration::from_secs(1));
         let mut buffer = [0u8; 65_536];
+        let mut video_workers = HashMap::<VideoSource, crate::video::worker::EncoderWorker>::new();
+        let mut screen_audio_sender = None::<SendPipeline>;
         loop {
             let deadline = loop {
                 match self.session.poll_output()? {
@@ -686,6 +739,20 @@ impl Client {
                     .await?;
             }
             while let Some(event) = self.session.next_event() {
+                match &event {
+                    RtcEvent::VideoKeyframeRequested { source, rid } => {
+                        if let Some(worker) = video_workers.get(source) {
+                            worker.keyframe(rid.as_deref());
+                        }
+                    }
+                    RtcEvent::BandwidthEstimate { bits_per_second } => {
+                        let per_video = bits_per_second / video_workers.len().max(1) as u64;
+                        for worker in video_workers.values() {
+                            worker.bandwidth(per_video);
+                        }
+                    }
+                    _ => {}
+                }
                 let _ = self.events.send(event);
             }
             tokio::select! {
@@ -715,6 +782,14 @@ impl Client {
                 _ = tokio::time::sleep_until(deadline.into()) => self.session.timeout(Instant::now())?,
                 _ = tick.tick() => {
                     let now = Instant::now();
+                    for (source,worker) in &mut video_workers {
+                        while let Some(packet)=worker.next() {
+                            match packet {
+                                Ok(frame)=>{ self.session.send_video(*source,frame,now)?; }
+                                Err(error)=>{ let _=self.events.send(RtcEvent::DeviceError(error.to_string())); }
+                            }
+                        }
+                    }
                     let output = self.session.receiver.render(now.duration_since(self.epoch).as_secs_f64()*1000.0)?;
                     let mut played = false;
                     if let Some(sink) = &playback {
@@ -755,6 +830,35 @@ impl Client {
                     Some(Command::Capture(frame)) => {
                         if let Some(packet) = self.sender.process(&frame)? { self.session.send_audio(packet, Instant::now())?; }
                     }
+                    Some(Command::PublishVideo { source,config }) => {
+                        if let Some(config)=config {
+                            if config.source!=source { return Err(Error::Invalid("video source/config mismatch")); }
+                            let worker=crate::video::worker::EncoderWorker::new(config.clone()).map_err(rtc_error)?;
+                            self.session.set_video_published(source,Some(config))?;
+                            video_workers.insert(source,worker);
+                        } else {
+                            self.session.set_video_published(source,None)?;
+                            video_workers.remove(&source);
+                        }
+                    }
+                    Some(Command::VideoFrame { source,frame }) => { if let Some(worker)=video_workers.get(&source) { worker.frame(frame); } }
+                    Some(Command::EncodedVideo { source,frame }) => { self.session.send_video(source,frame,Instant::now())?; }
+                    Some(Command::PublishScreenAudio(published)) => {
+                        self.session.set_screen_audio_published(published)?;
+                        if published && screen_audio_sender.is_none() {
+                            screen_audio_sender=Some(SendPipeline::new(AudioSettings {
+                                profile:crate::audio::codec::Profile::Studio,gate:crate::audio::level::Gate::Open,
+                                noise_level:crate::audio::denoise::NoiseLevel::Off,agc:false,normalize:false,..Default::default()
+                            })?);
+                        }
+                    }
+                    Some(Command::CaptureScreenAudio(frame)) => {
+                        if let Some(sender)=&mut screen_audio_sender && let Some(packet)=sender.process(&frame)? {
+                            self.session.send_screen_audio(packet,Instant::now())?;
+                        }
+                    }
+                    Some(Command::SetVideoQuality { mid,max_height }) => self.session.set_video_quality(mid,max_height),
+                    Some(Command::RequestVideoKeyframe { mid }) => self.session.request_video_keyframe(&mid)?,
                     Some(Command::Leave) | None => break,
                 },
             }

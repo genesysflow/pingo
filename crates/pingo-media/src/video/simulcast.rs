@@ -8,7 +8,7 @@ use super::{
 };
 use std::time::Duration;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum VideoSource {
     Screen,
     Camera,
@@ -20,7 +20,7 @@ pub struct Layer {
     pub height: u32,
     pub bitrate: u32,
 }
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct VideoPublishConfig {
     pub source: VideoSource,
     pub mode: VideoMode,

@@ -16,3 +16,5 @@ pub enum VideoError {
     Unsupported(&'static str),
 }
 pub type Result<T> = std::result::Result<T, VideoError>;
+
+pub(crate) mod worker;

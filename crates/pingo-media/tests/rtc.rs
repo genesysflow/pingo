@@ -399,3 +399,235 @@ fn publication_changes_during_pending_offers_are_not_lost() {
         matches!(client.next_signal(), Some(ClientMsg::PublishTracks { tracks }) if tracks.len() == 1)
     );
 }
+
+#[test]
+fn video_simulcast_renegotiates_frames_and_pli_without_audio_hardware() {
+    use pingo_media::video::{
+        capture::synthetic::SyntheticScreen,
+        encode::VideoMode,
+        simulcast::{SimulcastEncoder, VideoPublishConfig, VideoSource},
+    };
+    use str0m::media::{KeyframeRequestKind, MediaTime, Rid};
+    let now = Instant::now();
+    let mut client = Session::new(
+        now,
+        &["127.0.0.1:51000".parse().unwrap()],
+        AudioSettings::default(),
+    )
+    .unwrap();
+    let mut peer = Rtc::builder()
+        .clear_codecs()
+        .enable_opus(true, false)
+        .enable_h264(true)
+        .enable_vp8(true)
+        .build(now);
+    peer.add_local_candidate(Candidate::host("127.0.0.1:61000".parse().unwrap(), "udp").unwrap());
+    let mut config = VideoPublishConfig::screen(320, 180, VideoMode::Text);
+    config.prefer_hardware = false;
+    client
+        .set_video_published(VideoSource::Screen, Some(config.clone()))
+        .unwrap();
+    client
+        .signal(ServerMsg::Joined {
+            participant_id: "native".into(),
+            participants: vec![],
+        })
+        .unwrap();
+    let mut events = Vec::new();
+    // Initial audio offer, then the deferred screen offer after its answer.
+    for round in 0..2 {
+        let Some(ClientMsg::Offer { sdp }) = client.next_signal() else {
+            panic!("no offer {round}")
+        };
+        if round == 1 {
+            assert!(sdp.contains("a=simulcast:send l;h"));
+            assert!(sdp.contains("max-height=180"));
+        }
+        assert!(matches!(
+            client.next_signal(),
+            Some(ClientMsg::PublishTracks { .. })
+        ));
+        let answer = peer
+            .sdp_api()
+            .accept_offer(SdpOffer::from_sdp_string(&sdp).unwrap())
+            .unwrap();
+        client
+            .signal(ServerMsg::Answer {
+                sdp: answer.to_sdp_string(),
+            })
+            .unwrap();
+    }
+    let mut clock = now;
+    for step in 1..=100 {
+        clock = now + Duration::from_millis(step * 5);
+        client.timeout(clock).unwrap();
+        peer.handle_input(Input::Timeout(clock)).unwrap();
+        exchange(&mut client, &mut peer, clock, &mut events);
+    }
+    assert!(client.connected);
+    let source = SyntheticScreen::new(320, 180, false).unwrap();
+    let mut encoder = SimulcastEncoder::new(config).unwrap();
+    let frames = encoder.encode(&source.frame_at(0)).unwrap();
+    for frame in frames.clone() {
+        assert!(
+            client
+                .send_video(VideoSource::Screen, frame, clock)
+                .unwrap()
+        );
+    }
+    for step in 1..=50 {
+        let at = clock + Duration::from_millis(step * 5);
+        client.timeout(at).unwrap();
+        peer.handle_input(Input::Timeout(at)).unwrap();
+        exchange(&mut client, &mut peer, at, &mut events);
+    }
+    let received: Vec<_> = events
+        .iter()
+        .filter_map(|event| {
+            if let Event::MediaData(data) = event {
+                Some(data)
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(received.len(), 2, "{events:?}");
+    for data in &received {
+        assert!(data.is_keyframe());
+        let mut decoder = openh264::decoder::Decoder::new().unwrap();
+        let frame = decoder.decode(&data.data).unwrap().unwrap();
+        use openh264::formats::YUVSource;
+        assert!(matches!(frame.dimensions(), (160, 90) | (320, 180)));
+    }
+    let mid = client.local_video_mid(VideoSource::Screen).unwrap();
+    peer.writer(mid)
+        .unwrap()
+        .request_keyframe(Some(Rid::from("h")), KeyframeRequestKind::Pli)
+        .unwrap();
+    for step in 51..=90 {
+        let at = clock + Duration::from_millis(step * 5);
+        client.timeout(at).unwrap();
+        peer.handle_input(Input::Timeout(at)).unwrap();
+        exchange(&mut client, &mut peer, at, &mut events);
+    }
+    let mut pli = false;
+    while let Some(event) = client.next_event() {
+        if let RtcEvent::VideoKeyframeRequested { source, rid } = event {
+            assert_eq!(source, VideoSource::Screen);
+            assert_eq!(rid.as_deref(), Some("h"));
+            encoder.request_keyframe(rid.as_deref());
+            pli = true;
+        }
+    }
+    assert!(pli);
+    assert!(
+        encoder
+            .encode(&source.frame_at(1))
+            .unwrap()
+            .iter()
+            .find(|f| f.rid.as_deref() == Some("h"))
+            .unwrap()
+            .keyframe
+    );
+    // Expose complete remote encoded frames to desktop consumers.
+    let mut changes = peer.sdp_api();
+    let incoming = changes.add_media(MediaKind::Video, Direction::SendOnly, None, None, None);
+    let (offer, pending) = changes.apply().unwrap();
+    client
+        .signal(ServerMsg::Offer {
+            sdp: offer.to_sdp_string(),
+        })
+        .unwrap();
+    let Some(ClientMsg::Answer { sdp }) = client.next_signal() else {
+        panic!("no answer")
+    };
+    peer.sdp_api()
+        .accept_answer(pending, SdpAnswer::from_sdp_string(&sdp).unwrap())
+        .unwrap();
+    client
+        .signal(ServerMsg::TrackPublished {
+            track: TrackInfo {
+                participant_id: "remote".into(),
+                mid: incoming.to_string(),
+                kind: TrackKind::Screen,
+            },
+        })
+        .unwrap();
+    let writer = peer.writer(incoming).unwrap();
+    let pt = writer
+        .payload_params()
+        .find(|p| {
+            p.spec().codec == str0m::format::Codec::H264
+                && p.spec().format.packetization_mode == Some(1)
+        })
+        .unwrap()
+        .pt();
+    writer
+        .write(pt, clock, MediaTime::from_90khz(0), frames[1].data.clone())
+        .unwrap();
+    for step in 91..=130 {
+        let at = clock + Duration::from_millis(step * 5);
+        client.timeout(at).unwrap();
+        peer.handle_input(Input::Timeout(at)).unwrap();
+        exchange(&mut client, &mut peer, at, &mut events);
+    }
+    let mut decoded = false;
+    while let Some(event) = client.next_event() {
+        if let RtcEvent::VideoFrame { track, frame } = event {
+            assert_eq!(track.participant_id, "remote");
+            assert!(frame.keyframe);
+            assert!(
+                openh264::decoder::Decoder::new()
+                    .unwrap()
+                    .decode(&frame.data)
+                    .unwrap()
+                    .is_some()
+            );
+            decoded = true;
+        }
+    }
+    assert!(decoded);
+    // Stop while screen-audio is also requested; snapshot must retain the audio tracks.
+    client.set_screen_audio_published(true).unwrap();
+    client
+        .set_video_published(VideoSource::Screen, None)
+        .unwrap();
+    let Some(ClientMsg::Offer { sdp }) = client.next_signal() else {
+        panic!("no screen audio offer")
+    };
+    let Some(ClientMsg::PublishTracks { tracks }) = client.next_signal() else {
+        panic!("no snapshot")
+    };
+    assert!(tracks.iter().any(|t| t.kind == TrackKind::ScreenAudio));
+    let answer = peer
+        .sdp_api()
+        .accept_offer(SdpOffer::from_sdp_string(&sdp).unwrap())
+        .unwrap();
+    client
+        .signal(ServerMsg::Answer {
+            sdp: answer.to_sdp_string(),
+        })
+        .unwrap();
+    let Some(ClientMsg::Offer { sdp }) = client.next_signal() else {
+        panic!("no deferred stop offer")
+    };
+    let Some(ClientMsg::PublishTracks { tracks }) = client.next_signal() else {
+        panic!("no stop snapshot")
+    };
+    assert_eq!(tracks.len(), 2);
+    assert!(!tracks.iter().any(|t| t.kind == TrackKind::Screen));
+    let answer = peer
+        .sdp_api()
+        .accept_offer(SdpOffer::from_sdp_string(&sdp).unwrap())
+        .unwrap();
+    client
+        .signal(ServerMsg::Answer {
+            sdp: answer.to_sdp_string(),
+        })
+        .unwrap();
+    assert!(
+        !client
+            .send_video(VideoSource::Screen, frames[1].clone(), clock)
+            .unwrap()
+    );
+}
