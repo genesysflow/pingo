@@ -588,6 +588,7 @@ impl Client {
                         if io.stats().fault && let Err(error) = io.recover() {
                             let _ = self.events.send(RtcEvent::DeviceError(error.to_string()));
                         }
+                        self.sender.set_stream_delay_ms(Some(io.stream_delay_ms()));
                         io.playback(&output)?;
                         if let Some(capture) = io.capture()? && let Some(packet) = self.sender.process(&capture)? {
                             self.session.send_audio(packet, now)?;

@@ -1,6 +1,6 @@
 #[cfg(not(feature = "webrtc-apm"))]
 use crate::FRAME_SAMPLES;
-use crate::{MonoFrame, Result};
+use crate::{MonoFrame, Result, StereoFrame};
 
 /// State is kept per microphone; callers feed the actual rendered speaker mix.
 pub struct AudioProcessor {
@@ -12,6 +12,7 @@ pub struct AudioProcessor {
     previous_output: f32,
     #[cfg(not(feature = "webrtc-apm"))]
     gain: f32,
+    delay_ms: Option<u16>,
     agc: bool,
     echo: bool,
 }
@@ -28,6 +29,7 @@ impl AudioProcessor {
             previous_output: 0.0,
             #[cfg(not(feature = "webrtc-apm"))]
             gain: 1.0,
+            delay_ms: None,
             agc,
             echo,
         };
@@ -46,8 +48,19 @@ impl AudioProcessor {
         {
             use webrtc_audio_processing::config::*;
             self.processor.set_config(Config {
-                high_pass_filter: Some(HighPassFilter::default()),
-                echo_canceller: echo.then(EchoCanceller::default),
+                pipeline: Pipeline {
+                    multi_channel_render: true,
+                    ..Default::default()
+                },
+                // Split-band HP avoids the 48 kHz filter's larger DC residual.
+                high_pass_filter: Some(HighPassFilter {
+                    apply_in_full_band: false,
+                }),
+                echo_canceller: echo.then_some(EchoCanceller::Full {
+                    stream_delay_ms: self.delay_ms,
+                }),
+                // RNNoise runs after APM; avoid applying two suppressors.
+                noise_suppression: None,
                 gain_controller: agc.then(|| {
                     GainController::GainController2(GainController2 {
                         adaptive_digital: Some(AdaptiveDigital::default()),
@@ -59,11 +72,35 @@ impl AudioProcessor {
         }
     }
 
+    /// Sum of capture age and render-to-speaker delay, excluding acoustic travel.
+    /// None lets AEC3 estimate delay when no device timestamps are available.
+    pub fn set_stream_delay_ms(&mut self, delay_ms: Option<u16>) {
+        let delay_ms = delay_ms.map(|delay| delay.min(500));
+        if self.delay_ms != delay_ms {
+            self.delay_ms = delay_ms;
+            self.configure(self.agc, self.echo);
+        }
+    }
+
     pub fn render(&mut self, frame: &MonoFrame) -> Result<()> {
         #[cfg(feature = "webrtc-apm")]
         self.processor
             .analyze_render_frame([frame.as_slice()])
             .map_err(|e| crate::Error::Processing(e.to_string()))?;
+        #[cfg(not(feature = "webrtc-apm"))]
+        let _ = frame;
+        Ok(())
+    }
+
+    pub fn render_stereo(&mut self, frame: &StereoFrame) -> Result<()> {
+        #[cfg(feature = "webrtc-apm")]
+        {
+            let left = frame.map(|s| s[0]);
+            let right = frame.map(|s| s[1]);
+            self.processor
+                .analyze_render_frame([left.as_slice(), right.as_slice()])
+                .map_err(|e| crate::Error::Processing(e.to_string()))?;
+        }
         #[cfg(not(feature = "webrtc-apm"))]
         let _ = frame;
         Ok(())

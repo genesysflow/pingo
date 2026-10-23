@@ -68,15 +68,22 @@ including FEC attempts. It is a packet percentage rather than a sample percentag
 
 ## Optional processors and current limits
 
-- Default builds use a pure Rust 80 Hz high-pass and gated basic AGC, **without
-  acoustic echo cancellation**. `SendPipeline::has_aec()` reports actual support.
-- `--features webrtc-apm` uses `webrtc-audio-processing 2.1` with its bundled
-  feature: AEC3, AGC2 and high-pass, with the playback reference fed to AEC. The
-  bundled build was attempted on this host and failed with `Failed to execute
-  meson` / `No such file or directory`. Thus it is not a default feature here and
-  its native build/runtime remain unverified. The upstream build also requires
-  Ninja, a C++ toolchain, libclang, Abseil (or its build-time fetch) and Rust's
-  llvm-tools component for symbol prefixing.
+- Default builds enable `webrtc-apm`: bundled `webrtc-audio-processing 2.1`,
+  AEC3 (full echo canceller), adaptive AGC2, split-band high-pass, and **APM noise
+  suppression disabled** because RNNoise follows it. Studio bypasses APM.
+  The actual stereo receive mix feeds the reverse stream every 10 ms; mono
+  capture feeds the forward stream. CPAL capture/playback timestamps, ring
+  occupancy and resampler delay supply stream delay before capture processing.
+  External I/O can call `SendPipeline::set_stream_delay_ms`; absent a measurement,
+  AEC3 estimates delay. Build prerequisites: Meson, Ninja, C++ toolchain, libclang,
+  Abseil (or Meson's build-time fetch) and Rust llvm-tools for symbol prefixing.
+- `--no-default-features` keeps the pure Rust 80 Hz high-pass and basic AGC,
+  without echo cancellation. `SendPipeline::has_aec()` reports actual support.
+- Hardware-free `tests/aec.rs` uses 40 ms delayed, attenuated, filtered synthetic
+  speech with room reflections. After 12 s convergence it requires ≥15 dB ERLE
+  (>96.8% echo-power reduction), and double-talk near-end gain between 0.5 and
+  1.5 so silencing the microphone cannot pass. Measured ERLE and gain are printed
+  by `cargo test -p pingo-media --test aec -- --nocapture`.
 - RNNoise (`nnnoiseless`) is the working default suppressor, with Off/Gentle/Strong
   levels. Gentle mixes 50% dry with wet; the dry signal is delayed 10 ms to align
   with RNNoise and avoid comb filtering. Strong uses the wet signal only. Weights
