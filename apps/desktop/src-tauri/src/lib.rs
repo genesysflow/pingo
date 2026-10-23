@@ -1,5 +1,7 @@
 pub mod calls;
 mod config;
+mod probe;
+mod video;
 
 use config::{DesktopState, Preferences};
 use tauri::{
@@ -122,9 +124,10 @@ pub fn run() {
             let _ = app.state::<calls::CallManager>().ptt(event.state == ShortcutState::Pressed);
             let _ = app.emit("desktop-ptt", event.state == ShortcutState::Pressed);
         }).build())
-        .invoke_handler(tauri::generate_handler![desktop_config, desktop_save_config, desktop_invites, desktop_notify, call_join, call_leave, call_configure, call_data, call_ptt, call_devices, call_loopback])
+        .invoke_handler(tauri::generate_handler![desktop_config, desktop_save_config, desktop_invites, desktop_notify, call_join, call_leave, call_configure, call_data, call_ptt, call_devices, call_loopback, video_subscribe, video_unsubscribe, video_ack, call_video_quality, probe::desktop_probe, probe::desktop_probe_report, probe::video_spike])
         .setup(|app| {
             app.manage(calls::CallManager::default());
+            app.manage(std::sync::Arc::new(video::VideoHub::default()));
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let mut last = Vec::new();
@@ -180,6 +183,11 @@ fn call_join(
         .server_url
         .clone()
         .ok_or("Choose a server first")?;
+    let hub = app
+        .state::<std::sync::Arc<video::VideoHub>>()
+        .inner()
+        .clone();
+    let video_session = session_id.clone();
     manager
         .join(
             calls::JoinRequest {
@@ -188,6 +196,9 @@ fn call_join(
                 url: &url,
                 token,
                 settings,
+                video_sink: Some(std::sync::Arc::new(move |packet| {
+                    hub.push(&video_session, packet)
+                })),
             },
             event_sink(app),
             true,
@@ -195,7 +206,12 @@ fn call_join(
         .map_err(|e| e.to_string())
 }
 #[tauri::command]
-fn call_leave(manager: tauri::State<'_, calls::CallManager>, session_id: String) {
+fn call_leave(
+    manager: tauri::State<'_, calls::CallManager>,
+    hub: tauri::State<'_, std::sync::Arc<video::VideoHub>>,
+    session_id: String,
+) {
+    hub.clear_session(&session_id);
     manager.leave(Some(&session_id));
 }
 #[tauri::command]
@@ -233,5 +249,42 @@ fn call_loopback(
 ) -> Result<(), String> {
     manager
         .loopback(session_id, settings, event_sink(app))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn video_subscribe(
+    manager: tauri::State<'_, calls::CallManager>,
+    hub: tauri::State<'_, std::sync::Arc<video::VideoHub>>,
+    session_id: String,
+    mid: String,
+    channel: tauri::ipc::Channel<tauri::ipc::Response>,
+) -> Result<(), String> {
+    if !manager.is_active(&session_id) || mid.is_empty() || mid.len() > 64 {
+        return Err("No matching native video call".into());
+    }
+    hub.subscribe(format!("{session_id}:{mid}"), channel)
+}
+#[tauri::command]
+fn video_unsubscribe(
+    hub: tauri::State<'_, std::sync::Arc<video::VideoHub>>,
+    session_id: String,
+    mid: String,
+) {
+    hub.unsubscribe(&format!("{session_id}:{mid}"));
+}
+#[tauri::command]
+fn video_ack(hub: tauri::State<'_, std::sync::Arc<video::VideoHub>>, key: String, frame_id: u32) {
+    hub.ack(&key, frame_id);
+}
+#[tauri::command]
+fn call_video_quality(
+    manager: tauri::State<'_, calls::CallManager>,
+    session_id: String,
+    mid: String,
+    max_height: u32,
+) -> Result<(), String> {
+    manager
+        .video_quality(&session_id, mid, max_height)
         .map_err(|e| e.to_string())
 }

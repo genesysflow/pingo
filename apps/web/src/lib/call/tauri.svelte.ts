@@ -4,6 +4,7 @@ import { CallState, type AudioSettings } from './controller.svelte';
 import type { AudioProfile } from '../data/types';
 import type { DataMsg, ParticipantInfo, TrackInfo } from '../proto';
 import { ReconnectPolicy } from './media';
+import { nativeVideo } from '../desktop/video';
 
 export interface NativeSettings extends AudioSettings {
   echoCancel: boolean; muted: boolean; deafened: boolean; pushToTalk: boolean; pttPressed: boolean;
@@ -109,6 +110,15 @@ export class TauriCallController extends CallState {
         this.participants = this.participants.filter(p => p.participantId !== event.participantId);
         break;
       }
+      case 'trackPublished': {
+        const track = event.track!;
+        if (track.kind === 'screen' || track.kind === 'camera') {
+          const user = this.participants.find(p => p.participantId === track.participantId)?.user;
+          if (user) this.media = [...this.media.filter(m => m.mid !== track.mid), { mid: track.mid, user, kind: track.kind, native: true, stream: null }];
+        }
+        break;
+      }
+      case 'trackUnpublished': this.media = this.media.filter(m => m.mid !== event.mid); break;
       case 'connected':
         clearTimeout(this.connectTimer); this.connection = 'connected'; this.error = ''; this.retry.connected(); break;
       case 'disconnected': this.reconnect(); break;
@@ -167,6 +177,11 @@ export class TauriCallController extends CallState {
   }
   override setParticipantVolume(user: string, volume: number) {
     this.manual[user] = Math.max(0, Math.min(1.5, volume)); super.setParticipantVolume(user, this.manual[user]); this.configure();
+  }
+  attachVideo(mid: string, canvas: HTMLCanvasElement) { return nativeVideo(this.sessionId, mid, canvas, e => { this.error = String(e); }); }
+  override setVideoQuality(mid: string, maxHeight: number) {
+    if (!this.sessionId) return;
+    void this.command('call_video_quality', { sessionId: this.sessionId, mid, maxHeight: Math.max(0, Math.min(4320, Math.round(maxHeight))) }).catch(e => { this.error = String(e); });
   }
   override toggleShare() { this.error = 'Native screen sending is not available in this build.'; }
   override toggleCamera() { this.error = 'Native camera sending is not available in this build.'; }

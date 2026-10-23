@@ -1,0 +1,78 @@
+{
+  "avc1.42E01F": {
+    "config": {
+      "codec": "avc1.42E01F",
+      "codedHeight": 1080,
+      "codedWidth": 1920,
+      "hardwareAcceleration": "no-preference"
+    },
+    "encodedBytesReceived": 94774,
+    "supported": false
+  },
+  "samples": [
+    {
+      "cpuClockTicksPerSecond": 100,
+      "cpuPercentOneCore": 156.7188343210629,
+      "displayed": 57,
+      "dropped": 93,
+      "fps": 30,
+      "frames": 150,
+      "ipcDisplayMedianMs": 58.2412109375,
+      "ipcDisplayP95Ms": 97.752197265625,
+      "mode": "h264",
+      "seconds": 4.689927686,
+      "sent": 57
+    },
+    {
+      "cpuClockTicksPerSecond": 100,
+      "cpuPercentOneCore": 181.6163056207635,
+      "displayed": 52,
+      "dropped": 248,
+      "fps": 60,
+      "frames": 300,
+      "ipcDisplayMedianMs": 75.624267578125,
+      "ipcDisplayP95Ms": 104.13427734375,
+      "mode": "h264",
+      "seconds": 4.806837123,
+      "sent": 52
+    },
+    {
+      "cpuClockTicksPerSecond": 100,
+      "cpuPercentOneCore": 140.24994857748504,
+      "displayed": 44,
+      "dropped": 106,
+      "fps": 30,
+      "frames": 150,
+      "ipcDisplayMedianMs": 83.57373046875,
+      "ipcDisplayP95Ms": 120.4638671875,
+      "mode": "vp8",
+      "seconds": 4.663103314,
+      "sent": 44
+    },
+    {
+      "cpuClockTicksPerSecond": 100,
+      "cpuPercentOneCore": 185.59798929330697,
+      "displayed": 50,
+      "dropped": 250,
+      "fps": 60,
+      "frames": 300,
+      "ipcDisplayMedianMs": 74.61376953125,
+      "ipcDisplayP95Ms": 112.83154296875,
+      "mode": "vp8",
+      "seconds": 4.676774804,
+      "sent": 50
+    }
+  ],
+  "secureContext": true,
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15",
+  "vp8": {
+    "config": {
+      "codec": "vp8",
+      "codedHeight": 1080,
+      "codedWidth": 1920,
+      "hardwareAcceleration": "no-preference"
+    },
+    "encodedBytesReceived": 74834,
+    "supported": false
+  }
+}

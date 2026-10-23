@@ -37,6 +37,17 @@ fn rtc_error(error: impl std::fmt::Display) -> Error {
     Error::Rtc(error.to_string())
 }
 
+/// Encoded remote video RTP for an external depacketizer/renderer. No pixels or GPU resources live here.
+#[derive(Clone, Debug)]
+pub struct RemoteVideoPacket {
+    pub track: TrackInfo,
+    pub codec: &'static str,
+    pub sequence: u16,
+    pub timestamp: u32,
+    pub marker: bool,
+    pub payload: Vec<u8>,
+}
+
 #[derive(Clone, Debug)]
 pub enum RtcEvent {
     Joined {
@@ -62,6 +73,7 @@ pub enum RtcEvent {
     Data(DataMsg),
     Quality(QualityReport),
     DeviceError(String),
+    RemoteVideo(RemoteVideoPacket),
     Error {
         code: String,
         message: String,
@@ -80,6 +92,7 @@ pub struct Session {
     joined: bool,
     pub connected: bool,
     tracks: HashMap<Mid, TrackInfo>,
+    remote_video: HashMap<Mid, TrackInfo>,
     remote_muted: HashSet<String>,
     outgoing: VecDeque<ClientMsg>,
     events: VecDeque<RtcEvent>,
@@ -95,6 +108,8 @@ impl Session {
         let mut config = Rtc::builder()
             .set_rtp_mode(true)
             .clear_codecs()
+            .enable_vp8(true)
+            .enable_h264(true)
             .set_extension(1, Extension::AudioLevel)
             .set_stats_interval(Some(Duration::from_secs(1)));
         // Always negotiate stereo reception and permit Studio without renegotiation.
@@ -129,6 +144,7 @@ impl Session {
             joined: false,
             connected: false,
             tracks: HashMap::new(),
+            remote_video: HashMap::new(),
             remote_muted: HashSet::new(),
             outgoing: VecDeque::new(),
             events: VecDeque::new(),
@@ -248,6 +264,10 @@ impl Session {
                         self.receiver.add_participant(track_key(&track))?;
                     }
                 }
+                if matches!(track.kind, TrackKind::Screen | TrackKind::Camera) {
+                    self.remote_video
+                        .insert(Mid::from(track.mid.as_str()), track.clone());
+                }
                 self.apply_receive_settings();
                 self.events.push_back(RtcEvent::TrackPublished(track));
             }
@@ -255,6 +275,7 @@ impl Session {
                 participant_id,
                 mid,
             } => {
+                self.remote_video.remove(&Mid::from(mid.as_str()));
                 if let Some(track) = self.tracks.remove(&Mid::from(mid.as_str())) {
                     self.receiver.remove_participant(&track_key(&track));
                 }
@@ -275,6 +296,8 @@ impl Session {
             }
             ServerMsg::ParticipantLeft { participant_id } => {
                 self.remote_muted.remove(&participant_id);
+                self.remote_video
+                    .retain(|_, track| track.participant_id != participant_id);
                 self.tracks.retain(|_, track| {
                     if track.participant_id == participant_id {
                         self.receiver.remove_participant(&track_key(track));
@@ -333,6 +356,31 @@ impl Session {
                     .direct_api()
                     .stream_rx(&packet.header.ssrc)
                     .map(|s| s.mid());
+                if let Some(track) = mid.and_then(|mid| self.remote_video.get(&mid)) {
+                    let codec = self
+                        .rtc
+                        .codec_config()
+                        .params()
+                        .iter()
+                        .find(|p| p.pt() == packet.header.payload_type)
+                        .and_then(|p| match p.spec().codec {
+                            Codec::H264 => Some("h264"),
+                            Codec::Vp8 => Some("vp8"),
+                            _ => None,
+                        });
+                    if let Some(codec) = codec {
+                        self.events
+                            .push_back(RtcEvent::RemoteVideo(RemoteVideoPacket {
+                                track: track.clone(),
+                                codec,
+                                sequence: packet.header.sequence_number,
+                                timestamp: packet.header.timestamp,
+                                marker: packet.header.marker,
+                                payload: packet.payload.to_vec(),
+                            }));
+                    }
+                    return Ok(());
+                }
                 if let Some(track) = mid.and_then(|mid| self.tracks.get(&mid)) {
                     let samples = opus::packet::get_nb_samples(&packet.payload, 48_000);
                     let duration = match samples {
@@ -586,6 +634,11 @@ pub enum Command {
     Settings(Box<AudioSettings>),
     Data(DataMsg),
     PublishAudio(bool),
+    /// Subscriber preference on the receiver's mid; zero pauses forwarding.
+    VideoQuality {
+        mid: String,
+        max_height: u32,
+    },
     Capture(Box<StereoFrame>),
     Leave,
 }
@@ -752,6 +805,14 @@ impl Client {
                     }
                     Some(Command::Data(data)) => { self.session.send_data(&data)?; }
                     Some(Command::PublishAudio(published)) => self.session.set_audio_published(published)?,
+                    Some(Command::VideoQuality { mid, max_height }) => {
+                        if mid.len() <= 64 && max_height <= 4320 {
+                            if max_height > 0 && let Some(stream) = self.session.rtc.direct_api().stream_rx_by_mid(Mid::from(mid.as_str()), None) {
+                                stream.request_keyframe(str0m::media::KeyframeRequestKind::Pli);
+                            }
+                            self.session.outgoing.push_back(ClientMsg::SetVideoQuality { mid, max_height });
+                        }
+                    }
                     Some(Command::Capture(frame)) => {
                         if let Some(packet) = self.sender.process(&frame)? { self.session.send_audio(packet, Instant::now())?; }
                     }

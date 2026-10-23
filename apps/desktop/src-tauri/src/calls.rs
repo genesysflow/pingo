@@ -171,6 +171,7 @@ pub struct JoinRequest<'a> {
     pub url: &'a str,
     pub token: String,
     pub settings: Settings,
+    pub video_sink: Option<crate::video::PacketSink>,
 }
 #[derive(Default)]
 pub struct CallManager {
@@ -247,6 +248,31 @@ impl CallManager {
             .try_send(Command::Data(data))
             .map_err(|_| CallError::Busy)
     }
+    pub fn is_active(&self, id: &str) -> bool {
+        self.state
+            .lock()
+            .unwrap()
+            .active
+            .as_ref()
+            .is_some_and(|a| a.id == id)
+    }
+    pub fn video_quality(&self, id: &str, mid: String, height: u32) -> Result<(), CallError> {
+        if mid.is_empty() || mid.len() > 64 || height > 4320 {
+            return Err(CallError::Invalid("Invalid video quality preference"));
+        }
+        let state = self.state.lock().unwrap();
+        state
+            .active
+            .as_ref()
+            .filter(|a| a.id == id)
+            .ok_or(CallError::Idle)?
+            .commands
+            .try_send(Command::VideoQuality {
+                mid,
+                max_height: height,
+            })
+            .map_err(|_| CallError::Busy)
+    }
     pub fn leave(&self, id: Option<&str>) {
         let mut state = self.state.lock().unwrap();
         if state
@@ -272,6 +298,7 @@ impl CallManager {
             url,
             token,
             settings,
+            video_sink,
         } = request;
         let url = rtc_url(origin, url)?;
         if token.is_empty() || token.len() > 16_384 || id.is_empty() || id.len() > 128 {
@@ -301,11 +328,25 @@ impl CallManager {
                     } else {
                         None
                     };
-                    let forward = forward_events(events, sink.clone(), id.clone());
+                    let forward = forward_events(events, sink.clone(), id.clone(), video_sink);
                     tokio::pin!(forward);
+                    let (playback, mut frames) = mpsc::channel::<pingo_media::rtc::PlaybackFrame>(8);
+                    let observe = async {
+                        let mut bytes = 0u64;
+                        let mut last = Instant::now();
+                        while let Some(frame) = frames.recv().await {
+                            if frame.frame.iter().any(|s| s[0].abs() > 0.00001 || s[1].abs() > 0.00001) { bytes += (pingo_media::FRAME_SAMPLES*2*4) as u64; }
+                            if last.elapsed() >= Duration::from_secs(1) {
+                                sink(CallEvent { session_id: id.clone(), event: json!({"type":"playback", "receivedPcmBytes":bytes}) });
+                                last = Instant::now();
+                            }
+                        }
+                    };
+                    tokio::pin!(observe);
                     let mut stop = stop;
                     tokio::select! {
-                        result = client.run(io, commands) => result.map_err(|e| e.to_string()),
+                        result = client.run_with_playback(io, commands, Some(playback)) => result.map_err(|e| e.to_string()),
+                        _ = &mut observe => Err("Playback observer closed".into()),
                         _ = &mut forward => Err("Native event stream closed".into()),
                         _ = stop.changed() => Ok(()),
                     }
@@ -457,6 +498,7 @@ async fn forward_events(
     mut events: tokio::sync::broadcast::Receiver<RtcEvent>,
     sink: EventSink,
     id: String,
+    video_sink: Option<crate::video::PacketSink>,
 ) {
     loop {
         let event = match events.recv().await {
@@ -471,6 +513,12 @@ async fn forward_events(
             Err(_) => return,
         };
         let event = match event {
+            RtcEvent::RemoteVideo(packet) => {
+                if let Some(sink) = &video_sink {
+                    sink(packet);
+                }
+                continue;
+            }
             RtcEvent::Joined {
                 participant_id,
                 participants,
