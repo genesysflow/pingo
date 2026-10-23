@@ -445,6 +445,47 @@ pub(crate) fn parse_mid(value: &str) -> Option<Mid> {
     (!value.is_empty() && mid.to_string() == value).then_some(mid)
 }
 
+/// str0m 0.24 does not represent maxaveragebitrate. Advertise the receive
+/// ceiling on the wire; the SFU relays Opus unchanged, including stereo/FEC.
+fn opus_sdp(sdp: String) -> String {
+    let mut opus = Vec::new();
+    let mut output = String::with_capacity(sdp.len() + 128);
+    for line in sdp.lines() {
+        if line.starts_with("m=") {
+            opus.clear();
+        }
+        if let Some(map) = line.strip_prefix("a=rtpmap:")
+            && let Some((pt, codec)) = map.split_once(' ')
+            && codec.eq_ignore_ascii_case("opus/48000/2")
+        {
+            opus.push(pt.to_owned());
+        }
+        output.push_str(line);
+        if let Some(params) = line.strip_prefix("a=fmtp:")
+            && let Some((pt, _)) = params.split_once(' ')
+            && opus.iter().any(|opus_pt| opus_pt == pt)
+        {
+            for (key, value) in [
+                ("stereo", "1"),
+                ("sprop-stereo", "1"),
+                ("maxaveragebitrate", "256000"),
+            ] {
+                let present = params
+                    .split_once(' ')
+                    .unwrap()
+                    .1
+                    .split(';')
+                    .any(|p| p.trim().split_once('=').is_some_and(|(k, _)| k == key));
+                if !present {
+                    output.push_str(&format!(";{key}={value}"));
+                }
+            }
+        }
+        output.push_str("\r\n");
+    }
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -650,45 +691,4 @@ mod tests {
         peer.answer(&answer.to_sdp_string()).unwrap();
         assert!(peer.subscriptions.is_empty());
     }
-}
-
-/// str0m 0.24 does not represent maxaveragebitrate. Advertise the receive
-/// ceiling on the wire; the SFU relays Opus unchanged, including stereo/FEC.
-fn opus_sdp(sdp: String) -> String {
-    let mut opus = Vec::new();
-    let mut output = String::with_capacity(sdp.len() + 128);
-    for line in sdp.lines() {
-        if line.starts_with("m=") {
-            opus.clear();
-        }
-        if let Some(map) = line.strip_prefix("a=rtpmap:")
-            && let Some((pt, codec)) = map.split_once(' ')
-            && codec.eq_ignore_ascii_case("opus/48000/2")
-        {
-            opus.push(pt.to_owned());
-        }
-        output.push_str(line);
-        if let Some(params) = line.strip_prefix("a=fmtp:")
-            && let Some((pt, _)) = params.split_once(' ')
-            && opus.iter().any(|opus_pt| opus_pt == pt)
-        {
-            for (key, value) in [
-                ("stereo", "1"),
-                ("sprop-stereo", "1"),
-                ("maxaveragebitrate", "256000"),
-            ] {
-                let present = params
-                    .split_once(' ')
-                    .unwrap()
-                    .1
-                    .split(';')
-                    .any(|p| p.trim().split_once('=').is_some_and(|(k, _)| k == key));
-                if !present {
-                    output.push_str(&format!(";{key}={value}"));
-                }
-            }
-        }
-        output.push_str("\r\n");
-    }
-    output
 }

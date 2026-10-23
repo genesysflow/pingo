@@ -38,12 +38,14 @@ playout buffers. No durable or high-frequency state is written to a database.
 ```sh
 cargo run -p pingo-media --example devices
 cargo run -p pingo-media --release --example loopback -- --loss 5 --jitter 30
-cargo run -p pingo-media --release --example join -- --url ws://localhost:3000/rtc --token TOKEN
+cargo run -p pingo-media --release --example join -- --url ws://127.0.0.1:8090/rtc --token TOKEN
 ```
 
 Loopback also accepts `--seconds`, `--input`, `--output`, `--studio` and
-`--low-latency`. Join accepts `--input`/`--output`. Device examples need hardware;
-none of the regular tests do.
+`--low-latency`. Join accepts `--input`/`--output`, `--studio`, `--seconds N` and
+`--headless` (synthetic 440 Hz capture). Set `PINGO_MEDIA_TOKEN` instead of
+`--token` to keep admission tokens out of command-line output. Device examples
+need hardware; none of the regular tests do.
 
 ## Adaptive playout
 
@@ -99,58 +101,41 @@ including FEC attempts. It is a packet percentage rather than a sample percentag
 - RTC currently gathers UDP host candidates, uses SDP-only ICE and the existing
   pingo-proto Join/Offer/Answer/PublishTracks contract. It supports server
   re-offers, client-wins glare, RFC 6464, the pingo data channel and track mapping.
-  STUN/TURN, ICE-TCP, Opus RED, reconnect and real SFU/browser interoperability
-  are subsequent integration work. Only 10/20 ms remote Opus packets are accepted.
+  Native clients are verified against the embedded real SFU, including wildcard
+  client/server sockets. STUN/TURN deployment, ICE-TCP, native Opus RED, reconnect
+  and browser interoperability remain future work. Only 10/20 ms remote Opus
+  packets are accepted.
 - Hardware hot-plug, acoustic listening quality and real microphone-to-speaker
   latency have not been tested. Seeded 5% loss plus bursts is exercised, but this
   does not establish the product's subjective “no audible artifacts” target.
 
-## Verification and performance
+## Verification
 
 ```sh
-cargo test -p pingo-media
+cargo test --workspace
+cargo test -p pingo-media --no-default-features
 cargo test -p pingo-media --features deepfilter
 cargo check -p pingo-media --examples
-cargo clippy -p pingo-media --all-targets --no-deps -- -D warnings
-cargo fmt -p pingo-media --check
-cargo test -p pingo-media --release --test timing -- --ignored --nocapture
+cargo clippy --workspace --all-targets -- -D warnings
+cargo fmt --all --check
+cargo test -p pingo-media --test aec -- --nocapture
 ```
 
-Validation passes: 18 default tests, 19 with `deepfilter`; the hardware and timing
-tests are ignored by default. Examples compile, package formatting passes, and
-strict Clippy without dependency linting passes.
+The default media suite has 20 hardware-free tests, plus ignored hardware and
+release-timing tests. Coverage includes AEC convergence/double-talk, DC rejection,
+RNNoise, resampling, Opus profiles/PLC/FEC, runtime controls, mixing, RTP wrap,
+loss bursts/reordering/duplicates, adaptive delay and clock drift, corrupted
+payloads, and encrypted in-memory RTC audio/data/re-offer/glare negotiation.
+The server adds five native-client integration scenarios described below.
 
-Default tests cover synthetic DSP, RNNoise suppression/scaling, 44.1/96 kHz
-resampling, Opus profiles/PLC/FEC, runtime controls, mixer gain/pan/limiting,
-sequence/timestamp wrap, seeded loss bursts/reordering/duplicates, delay growth
-and recovery, ±1500 ppm clock drift for 60 simulated seconds, suspension, corrupt
-payloads, and duration changes during loss. The RTC test negotiates with a real
-str0m answerer and transports encrypted audio and data entirely in memory,
-including a server re-offer and remote-track routing. Hardware and timing tests
-are ignored in ordinary test runs.
+Measured AEC3 ERLE: **25.99 dB**, with **0.757 near-end gain** during double talk.
+AGC is disabled for this measurement so gain changes cannot inflate ERLE. The
+normal Voice configuration enables adaptive AGC2. The stereo render reference is antiphase, so averaging it to mono would erase
+the reference and fail the test. The test uses a synthetic linear acoustic path; nonlinear loudspeakers and real-room echo still need
+acoustic listening/measurement.
 
-The plain `cargo clippy -p pingo-media --all-targets` succeeds but reports a
-pre-existing `doc_lazy_continuation` warning at `pingo-proto/src/signal.rs:11`.
-`--no-deps -- -D warnings` verifies this crate strictly without changing proto.
-
-Measured 2026-10-23 on AMD Ryzen 7 5800X3D, Rust 1.99 release, system libopus 1.6.1,
-default fallback APM/Gentle RNNoise/20 ms Voice, one receive participant, 200 warmup
-frames followed by 5,000 timed frames:
-
-- Mean **183.96 µs per 10 ms frame**, median 252.22 µs, p95 336.14 µs;
-  **1.84% of one core**. DSP, encode, jitter/decode, mix and their allocations are
-  included. Device/transport costs are excluded; this is a shared build machine.
-- Chirp correlation finds **46.42 ms** between input/output sample arrays
-  (correlation 0.973). The simulator records each output frame at its capture
-  completion tick: +10 ms places it on the wall clock, and a conservative +10 ms
-  playback quantum gives **66.42 ms** send-to-receive algorithmic latency.
-- `latency_budget_ms(20.0)` is a conservative **76.50 ms** budget: 10 ms capture,
-  20 ms packetization, 10 ms RNNoise, 6.5 ms Opus lookahead, 20 ms playout and
-  10 ms playback. It intentionally allows a full packetization interval.
-  These values exclude network transit, device/OS buffering and resampler delay;
-  the latter is available from `RateConverter::delay_samples()`.
-
-No signaling or shared protocol contracts were changed.
+No shared signaling/data-channel/backend API contracts changed. The lockfile
+includes the native media engine as a server test dependency.
 
 ## Full-server native integration
 
@@ -164,13 +149,13 @@ server mute/query state, disconnect cleanup, and independent Studio stereo
 channels. Negotiated SDP requires stereo, FEC and a 256 kbps receive ceiling;
 Studio's encoder uses 192 kbps VBR.
 
-Measured on localhost: Voice **66.75 ms**, Studio **56.93 ms** from synthetic
-capture to mixed playback, steady-state jitter-buffer delay **29.7–30.1 ms**,
+Measured on localhost: Voice **67.07 ms**, Studio **57.52 ms** from synthetic
+capture to mixed playback, steady-state jitter-buffer delay **29.1–29.7 ms**,
 zero lost/concealed/late/corrupt packets. These include packetization, codec,
 playout and worker scheduling, with a 10 ms capture quantum; they exclude actual
 hardware/OS latency. Run output prints each receiver's full jitter statistics.
 
-The real-server tests found two interop bugs: SFU SDP inherited str0m's mono
+The audio tests found two interop bugs: SFU SDP inherited str0m's mono
 receive default, and client mute left old audio running through PLC. The SFU
 now advertises stereo explicitly (and a 256 kbps receive ceiling, which str0m
 0.24 cannot represent in FormatParams); the client drops queued audio and
@@ -179,7 +164,7 @@ silences the mix on authoritative participant mute updates.
 The three-party case joins a third authenticated member and sends independent
 440/880 Hz Voice streams. B's mixed output must contain both narrow-band peaks
 (and no comparable 600 Hz peak), with two independent playout buffers. Measured
-amplitudes were 0.115/0.095, delays 28.3–29.8 ms, and zero loss/concealment.
+amplitudes were 0.114/0.097, delays 26.3 ms, and zero loss/concealment.
 
 `Command::PublishAudio(false/true)` sends a complete PublishTracks snapshot and
 an inactive/send-only offer. Requests during a pending offer are applied after
@@ -187,3 +172,89 @@ its answer. Full-server tests cover unpublish, republish onto a new receiving
 mid, stale-buffer removal and mute/unmute recovery; the in-memory RTC test
 covers deferred changes and offer glare. Playback queue overflow now feeds
 silence to AEC instead of a reference that never reached the speaker.
+
+
+The wildcard-socket regression reproduces the production server binding with a
+concrete advertised loopback address. The SFU previously passed `0.0.0.0` to
+str0m as the receive destination, causing ICE to discard every binding request.
+It now resolves a concrete advertised candidate using the local route (or the
+configured public candidate behind NAT), with a bounded per-peer-address cache.
+
+## Join a development server with real devices
+
+From the repository root, start the server. Explicit temporary codegen avoids
+writing into the web agent's directory. Localhost ICE needs a loopback candidate:
+
+```sh
+PINGO_PUBLIC_IPS=127.0.0.1 PINGO_UDP_PORT=0 \
+  cargo run -p pingo-server -- serve --dev --http 127.0.0.1:8090 \
+  --dir /tmp/pingo-media-dev --codegen-out /tmp/pingo-media-codegen
+```
+
+In another terminal, list devices and build the example before minting the
+60-second media admission token:
+
+```sh
+cargo run -p pingo-media --example devices
+cargo build -p pingo-media --example join
+```
+
+Run this Python 3 snippet from the repository root. It calls `dev:seed`, requests
+a magic-link email for demo user Alex, retrieves the dev mailer's code, verifies
+it over HTTP, finds the Lounge and calls authenticated `voice:join`. The token
+stays in the child process environment. No dashboard/admin setup is required.
+
+```python
+import json, os, subprocess, urllib.request
+
+base_url = "http://127.0.0.1:8090"
+def post(path, data, access=None):
+    headers = {"Content-Type": "application/json"}
+    if access:
+        headers["Authorization"] = "Bearer " + access
+    request = urllib.request.Request(base_url + path, json.dumps(data).encode(), headers)
+    with urllib.request.urlopen(request, timeout=10) as response:
+        return json.load(response)
+
+def call(kind, path, args, access=None):
+    reply = post("/api/" + kind, {"path": path, "args": args}, access)
+    assert reply["status"] == "success", reply
+    return reply["value"]
+
+space = call("mutation", "dev:seed", {})
+email = "alex@pingo.test"   # Also seeded: sam@pingo.test, maya@pingo.test.
+post("/api/auth/magic/request", {"email": email})
+code = call("action", "dev:last_code", {"email": email})
+access = post("/api/auth/magic/verify", {"email": email, "code": code})["accessToken"]
+rooms = call("query", "rooms:list", {"space": space}, access)
+room = next(r["_id"] for r in rooms if r["name"] == "Lounge")
+admission = call("mutation", "voice:join", {"room": room}, access)
+subprocess.run([
+    "target/debug/examples/join", "--url", "ws://127.0.0.1:8090/rtc", "--seconds", "10",
+    # Optionally append: "--input", "DEVICE", "--output", "DEVICE", "--studio".
+    # Append "--headless" to send a synthetic signal without opening devices.
+], env={**os.environ, "PINGO_MEDIA_TOKEN": admission["token"]}, check=True)
+print("Participants after leave:", call("query", "voice:participants", {"room": room}, access))
+```
+
+Remove `--seconds 10` for an ongoing call; Ctrl-C leaves cleanly. Run the snippet
+again as Sam in a second terminal to test hearing each other. Use headphones.
+`dev:last_code` and `dev:seed` are available only in `--dev`.
+
+Manual device run on 2026-10-23: HTTP seed/magic-link/join succeeded; the example
+opened **HyperX SoloCast** input and **HyperX Cloud III Wireless** output, reached
+`Connected`, ran for five seconds, and exited 0 with no DeviceError events. RTT
+reports ranged **2.4–13.6 ms**; `voice:participants` was empty after leave. ALSA
+printed unavailable pulse/jack/oss alias warnings during enumeration; selected
+CPAL streams still opened. This confirms device opening, RTC and cleanup. It
+does not establish acoustic AEC quality or physical mouth-to-ear latency.
+
+
+Final verification (2026-10-23): `cargo test --workspace` passed **63 tests**
+(two hardware/performance tests ignored); `cargo clippy --workspace --all-targets
+-- -D warnings` and `cargo fmt --all --check` passed. Fallback media tests,
+`--features deepfilter` tests and `cargo check -p pingo-media --examples` passed.
+The headless join example also reached Connected and exited 0 with no remaining
+voice states. DeepFilter inference, STUN/TURN/native RED, browser/acoustic
+interoperability, hardware hot-plug and physical mouth-to-ear measurements remain
+outside this verification.

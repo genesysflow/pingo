@@ -54,7 +54,9 @@ fn aec3_reduces_delayed_room_echo_and_preserves_double_talk() {
                     0.0
                 }
         });
-        apm.render(&render).unwrap();
+        // Unequal acoustic coupling from antiphase speakers must still cancel:
+        // averaging the stereo reference to mono would erase it completely.
+        apm.render_stereo(&render.map(|s| [s, -s])).unwrap();
         apm.capture(&mut capture).unwrap();
         if (1200..1600).contains(&frame) {
             echo_power += echo.iter().map(|x| (*x as f64).powi(2)).sum::<f64>();

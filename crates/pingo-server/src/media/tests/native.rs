@@ -41,7 +41,7 @@ impl Native {
             format!("ws://{}/rtc", server.address),
             server.token(auth).await,
         );
-        config.bind = "127.0.0.1:0".parse().unwrap();
+        // Keep the production wildcard client binding, including route selection.
         config.settings = settings(profile);
         let client = Client::connect(config).await.unwrap();
         let events = client.events.subscribe();
@@ -222,7 +222,8 @@ async fn two_clients(profile: Profile) {
     let dominant = (420i32..=460)
         .max_by(|a, b| amplitude(&warm, *a as f64).total_cmp(&amplitude(&warm, *b as f64)))
         .unwrap();
-    assert!((dominant - 440).abs() <= 2, "dominant frequency {dominant}");
+    // ±6 Hz allows the playout controller's bounded 1% pitch correction.
+    assert!((dominant - 440).abs() <= 6, "dominant frequency {dominant}");
     let heard_marker = frames
         .iter()
         .filter(|f| f.at >= marker_at)
@@ -261,9 +262,9 @@ async fn two_clients(profile: Profile) {
             .filter(|f| f.at > marker_at + Duration::from_millis(500))
             .flat_map(|f| f.frame.iter().map(|s| s[1]))
             .collect();
-        assert!(amplitude(&warm, 440.0) > 0.06 && amplitude(&right, 660.0) > 0.06);
+        assert!(band_amplitude(&warm, 440) > 0.06 && band_amplitude(&right, 660) > 0.06);
         assert!(
-            amplitude(&warm, 660.0) < 0.015 && amplitude(&right, 440.0) < 0.015,
+            band_amplitude(&warm, 660) < 0.015 && band_amplitude(&right, 440) < 0.015,
             "stereo channels collapsed"
         );
     }
@@ -366,14 +367,14 @@ async fn native_three_party_mix_contains_both_publishers() {
                 .skip(100)
                 .flat_map(|f| f.frame.iter().map(|s| s[0]))
                 .collect();
-            let a_amp = amplitude(&mix, 440.0);
-            let c_amp = amplitude(&mix, 880.0);
+            let a_amp = band_amplitude(&mix, 440);
+            let c_amp = band_amplitude(&mix, 880);
             assert!(
                 a_amp > 0.04 && c_amp > 0.04,
                 "missing publisher: 440 Hz={a_amp:.3}, 880 Hz={c_amp:.3}"
             );
             assert!(
-                amplitude(&mix, 600.0) < 0.01,
+                band_amplitude(&mix, 600) < 0.01,
                 "broadband noise is not a successful mix"
             );
             println!(
@@ -414,7 +415,7 @@ async fn native_unpublish_republish_and_unmute_resume_audio() {
         b.wait(|e| matches!(e, RtcEvent::TrackPublished(t) if t.participant_id == a_id)).await;
         let resumed = b.record(Duration::from_millis(1500)).await;
         let samples: Vec<_> = resumed.iter().skip(80).flat_map(|f| f.frame.iter().map(|s| s[0])).collect();
-        assert!(amplitude(&samples, 440.0) > 0.05, "republish did not resume media");
+        assert_resumed_tone(&samples, "republish");
         assert_eq!(b.stats().len(), 1, "old subscriber mid retained");
         let mut muted = settings(Profile::Voice);
         muted.gate = Gate::Muted;
@@ -426,8 +427,53 @@ async fn native_unpublish_republish_and_unmute_resume_audio() {
         b.wait(|e| matches!(e, RtcEvent::ParticipantUpdated(p) if p.participant_id == a_id && !p.muted)).await;
         let resumed = b.record(Duration::from_millis(1500)).await;
         let samples: Vec<_> = resumed.iter().skip(80).flat_map(|f| f.frame.iter().map(|s| s[0])).collect();
-        assert!(amplitude(&samples, 440.0) > 0.05, "unmute retained stale timeline or zero volume");
+        assert_resumed_tone(&samples, "unmute");
         feeding.abort(); let _ = feeding.await;
         a.stop().await; b.stop().await; server.stop().await;
     }).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn native_connects_to_wildcard_sfu_udp_binding() {
+    LocalSet::new()
+        .run_until(async {
+            let server = Server::start_udp(true, "0.0.0.0:0").await;
+            let a = Native::join(&server, &server.ann_auth, Profile::Voice).await;
+            a.stop().await;
+            server.stop().await;
+        })
+        .await;
+}
+
+fn assert_resumed_tone(samples: &[f32], operation: &str) {
+    let peak = band_amplitude(samples, 440);
+    let rms =
+        (samples.iter().map(|x| (*x as f64).powi(2)).sum::<f64>() / samples.len() as f64).sqrt();
+    assert!(
+        peak > 0.04 && rms > 0.03,
+        "{operation}: peak {peak:.4}, RMS {rms:.4}"
+    );
+}
+
+fn band_amplitude(samples: &[f32], hz: i32) -> f64 {
+    // Adaptive playout changes both phase and pitch while correcting delay.
+    // Use 100 ms spectral windows, searching ±2%, rather than cancelling a
+    // moving tone against one phase reference across the entire recording.
+    let tolerance = (hz as f64 * 0.02).ceil() as i32;
+    let windows: Vec<_> = samples
+        .as_chunks::<4800>()
+        .0
+        .iter()
+        .map(|window| {
+            ((hz - tolerance)..=(hz + tolerance))
+                .step_by(2)
+                .map(|frequency| amplitude(window, frequency as f64))
+                .fold(0.0, f64::max)
+        })
+        .collect();
+    assert!(
+        !windows.is_empty(),
+        "recording too short for spectral analysis"
+    );
+    windows.iter().sum::<f64>() / windows.len() as f64
 }
