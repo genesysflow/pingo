@@ -1,4 +1,4 @@
-# Native audio engine
+# Native media engine
 
 All processing uses 48 kHz float PCM in 480-sample (10 ms) frames. Voice is mono
 64 kbps VBR Opus/VOIP with FEC and DTX; Studio is stereo 192 kbps Opus/AUDIO with
@@ -103,7 +103,7 @@ including FEC attempts. It is a packet percentage rather than a sample percentag
   re-offers, client-wins glare, RFC 6464, the pingo data channel and track mapping.
   Native clients are verified against the embedded real SFU, including wildcard
   client/server sockets. STUN/TURN deployment, ICE-TCP, native Opus RED, reconnect
-  and browser interoperability remain future work. Only 10/20 ms remote Opus
+  remain future work; native video/browser interoperability is covered below. Only 10/20 ms remote Opus
   packets are accepted.
 - Hardware hot-plug, acoustic listening quality and real microphone-to-speaker
   latency have not been tested. Seeded 5% loss plus bursts is exercised, but this
@@ -291,9 +291,13 @@ portal input for repeatable measurements.
 `AppAudioCapturer` captures one application's playback ports as 48 kHz stereo
 10 ms PCM frames. Select from `list_sources()`, which excludes this process,
 Pingo-named nodes and nodes with unknown ownership. The selected serial is
-revalidated at start and reconnection is disabled. A whole output-monitor mix
-is deliberately not exposed because it would include call playback; separate
-sink routing is required before implementing that option. Feed these frames to
+revalidated at start and reconnection is disabled. `SystemAudioCapturer` mixes
+these application monitor ports into one stereo stream, excluding the same
+Pingo/unknown-owner nodes. It takes a snapshot at start; restart to include
+newly opened application streams. Closed sources are removed, and an empty mix
+emits silence on the 10 ms clock. `screenshare --audio-system` selects this mix;
+`--audio-app SERIAL` selects one application. A raw hardware sink monitor is
+not exposed because that mix would include call playback. Feed these frames to
 the RTC screen-audio input, which encodes stereo Opus without microphone DSP.
 
 ## Video encoding (Part B)
@@ -365,3 +369,112 @@ level headers and adaptive playout remain covered by regression tests. Start,
 stop and configuration changes serialize through the existing client-wins SDP
 glare rule, including commands received while an offer is awaiting an answer.
 No `pingo-proto` or backend/UI contract changes were needed.
+
+## Native video verification (2026-10-25)
+
+Resumed from `t3/native-video-sharing-1`, including the unverified `c1bea20`.
+The follow-up fixes retain a static screen for PLI refreshes, close portal
+sessions when startup is cancelled, and withhold remote deltas until a keyframe
+provides decoder references. System audio can now mix the safe application
+monitor streams. Encoder startup failure is checked without assuming ICE
+Connected also means the SCTP data channel is ready.
+
+The full-server video test now runs in-process by default, without a prebuilt
+server binary. `tests/backend-fixture` is a test-only library importing the real
+backend modules: schema, auth, `voice:join`, environment lookup, `/rtc`, and voice
+state hooks all execute production code. This avoids copying a fake admission
+implementation or changing the server's binary-only package. TestApp creates
+two users, and authenticated HTTP calls obtain their media tokens. Leave hooks
+must clear backend voice state after each mode. Expensive PSNR comparisons run
+outside the live RTC executor; small 192×108 protocol fixtures allow unoptimized
+builds to test cadence independently of full-size encoder throughput.
+
+Verified commands and outcomes:
+
+- `cargo test --workspace`: **76 passed, 2 ignored**, no failures.
+- `cargo test -p pingo-media --features linux-capture,vp8,vaapi`:
+  **34 passed, 4 ignored**, no failures. This includes conversion, PSNR,
+  layer sizes, static-screen PLI recovery, camera, stereo ScreenAudio,
+  renegotiation, and the in-process backend test.
+- `cargo clippy --workspace --all-targets -- -D warnings`,
+  `cargo clippy -p pingo-media --features linux-capture,vp8,vaapi --all-targets -- -D warnings`,
+  and `cargo fmt --all --check`: **passed**.
+- `cargo check -p pingo-media --features linux-capture,vp8,vaapi --examples`:
+  **passed**.
+- `cargo build -p pingo-server`: **passed**, before browser tests.
+- `cd apps/web && bun run test:e2e`: **3 passed, 1 failed**, reproduced twice.
+  The audio/screen/call case passes. The unrelated history case at
+  `apps/web/tests/e2e/real/chat.spec.ts:76` cannot find “History message 0” after
+  loading earlier conversations and pressing Control+Home. UI files were not
+  changed; generated screenshot changes were discarded.
+- The ignored VAAPI encode/decode test: **30/30 frames decoded**, including a
+  requested keyframe. An invalid `PINGO_VAAPI_DEVICE=/dev/does-not-exist` selected
+  OpenH264 for both layers and encoded all 16 input frames in a one-second run.
+- The real portal example and ignored capture test both timed out after **45 s**
+  waiting for picker approval. No real screen frames or real-capture performance
+  measurements were obtained. Cancellation closes the pending portal session.
+
+The in-process SFU and full RxFerrix cases each decoded **60 Text frames at
+15 fps** and **240 Motion frames at 60 fps**, with minimum sampled full-YUV
+PSNR **40.07 dB** and **43.61 dB**, respectively, at the selected 96×54 low
+layer. Camera delivered 50 frames in its 25 fps fixture; independent 440/880 Hz
+ScreenAudio channels remained separate (amplitudes 0.105/0.104). Software codec
+round trips at 320×180 measured minimum PSNR **39.46/39.76 dB** for H.264
+Text/Motion and **57.36/48.23 dB** for VP8.
+
+### Chromium interoperability
+
+After installing the web dependencies, build the server and feature-enabled
+example, then run:
+
+```sh
+cargo build -p pingo-server
+cargo build --release -p pingo-media --features linux-capture,vp8,vaapi --example screenshare
+PINGO_NATIVE_PUBLISHER="$PWD/target/release/examples/screenshare" node crates/pingo-media/tests/browser_video.mjs
+PINGO_NATIVE_PUBLISHER="$PWD/target/release/examples/screenshare" node crates/pingo-media/tests/browser_video.mjs --vp8
+PINGO_NATIVE_PUBLISHER="$PWD/target/release/examples/screenshare" node crates/pingo-media/tests/browser_video.mjs --hardware
+```
+
+**All six cases passed**: Text and Motion with OpenH264, libvpx VP8, and
+VAAPI H.264. Each creates a real Chromium RTCPeerConnection against RxFerrix,
+publishes a synthetic screen with the production native Client, and requires
+at least 20 decoded frames, the expected codec, a playing 320×180 or 640×360
+`<video>`, and no signaling/playback errors. Short Chromium `framesPerSecond`
+samples include startup/pacing bursts; they are not sustained throughput results.
+
+### Detected support and measurements
+
+The host runs Hyprland with `wayland-1` and a reachable PipeWire daemon. No
+`Video/Source` camera node was present. Its GPU is **AMD Navi 48, Radeon RX
+9070/9070 XT/9070 GRE** (`1002:7550`), with `/dev/dri/renderD128`. FFmpeg exposes
+`h264_vaapi` and `libvpx`; actual VAAPI operation was verified, not inferred only
+from the encoder list. FFmpeg also lists NVIDIA encoders, but this host has no
+NVIDIA GPU and NVENC is not integrated.
+
+Five-second release runs used `screenshare --capture-only --synthetic`, with
+both simulcast layers, conversion and scaling. CPU is process user+system time
+divided by wall time, as a percentage of **one CPU core**; it includes synthetic
+frame generation and excludes build time. These are synthetic capture results:
+
+- OpenH264, **3840×2160 Text**: **3.70 encoded fps**, **239.87 ms/source frame**,
+  **87.1% CPU**. Frame skipping reduced 29 captured frames to 19 encoded frames.
+- OpenH264, **1920×1080 Motion**: **27.73 encoded fps**, **32.12 ms/source frame**,
+  **94.7% CPU**. 145 captured / 139 encoded frames.
+- VAAPI, **3840×2160 Text**: **15.09 fps**, **31.32 ms/source frame**,
+  **45.5% CPU**. All 76 captured frames encoded.
+- VAAPI, **1920×1080 Motion**: **60.01 fps**, **11.56 ms/source frame**,
+  **59.5% CPU**. All 301 captured frames encoded.
+
+Use `--width 3840 --height 2160` for Text, or
+`--motion --width 1920 --height 1080` for Motion; append `--software` to force
+OpenH264. Encoding time covers all layers; it is not time per individual layer.
+Software fallback does not meet the maximum requested rates on this host.
+
+Remaining limits: portal picker approval and real camera/app-monitor capture
+need interactive verification; system audio takes an application-stream snapshot
+at start; cameras require a packed-RGB PipeWire adapter. DMA-BUF import,
+publisher dynacast, macOS/Windows capture implementations, and NVENC remain
+unimplemented. STUN/TURN and reconnect are existing transport limits. See the
+encoding section above for source-built OpenH264 patent/bundling obligations and
+the optional system FFmpeg build's GPL/LGPL implications. No shared signaling,
+backend or UI contracts changed; the root Cargo.lock is committed.

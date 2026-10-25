@@ -1,6 +1,6 @@
 [package]
 name = "pingo-media"
-description = "Native audio engine: device I/O, DSP, adaptive playout and WebRTC client"
+description = "Native media engine: audio/video capture, processing, encoding and WebRTC client"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
