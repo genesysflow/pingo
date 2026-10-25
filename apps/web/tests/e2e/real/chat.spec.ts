@@ -72,7 +72,13 @@ test('real message history loads older cursor pages without unbounded DOM rows',
   await log.evaluate((node) => (node.scrollTop = 0));
   await page.getByRole('button', { name: 'Earlier conversations' }).click();
   await expect(page.getByRole('button', { name: 'Earlier conversations' })).toHaveCount(0);
-  await log.press('Control+Home');
-  await expect(page.getByRole('article').filter({ hasText: 'History message 0' }).first()).toBeVisible();
+  // Loading older pages re-anchors the scroll position after a tick, which can land after an immediate
+  // Control+Home; retry the jump until the oldest message is on screen.
+  await expect(async () => {
+    await log.press('Control+Home');
+    await expect(page.getByRole('article').filter({ hasText: 'History message 0' }).first()).toBeVisible({
+      timeout: 1000,
+    });
+  }).toPass();
   expect(await page.locator('.virtual-row').count()).toBeLessThan(80);
 });
