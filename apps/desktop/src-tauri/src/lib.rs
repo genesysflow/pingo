@@ -65,7 +65,10 @@ fn desktop_save_config(
         .push_to_talk_shortcut
         .as_deref()
         .and_then(|s| s.parse::<Shortcut>().ok());
-    if shortcut != old {
+    if shortcut != old && !state.shortcuts_available && shortcut.is_some() {
+        return Err("Global shortcuts unavailable. Use in-app push-to-talk.".into());
+    }
+    if shortcut != old && state.shortcuts_available {
         if let Some(shortcut) = shortcut {
             app.global_shortcut().register(shortcut).map_err(|e| {
                 format!("Global shortcut unavailable: {e}. Use in-app push-to-talk.")
@@ -81,7 +84,7 @@ fn desktop_save_config(
         .map_err(|e| e.to_string())?
         .join("preferences.json");
     if let Err(error) = preferences.save(&path) {
-        if shortcut != old {
+        if shortcut != old && state.shortcuts_available {
             if let Some(shortcut) = shortcut {
                 let _ = app.global_shortcut().unregister(shortcut);
             }
@@ -125,13 +128,17 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app, _, event| {
-            let _ = app.state::<calls::CallManager>().ptt(event.state == ShortcutState::Pressed);
-            let _ = app.emit("desktop-ptt", event.state == ShortcutState::Pressed);
-        }).build())
         .invoke_handler(tauri::generate_handler![desktop_config, desktop_save_config, desktop_invites, desktop_notify, call_join, call_leave, call_configure, call_data, call_ptt, call_devices, call_loopback, video_subscribe, video_unsubscribe, video_ack, call_video_quality, probe::desktop_probe, probe::desktop_probe_report, probe::video_spike])
         .setup(|app| {
             app.manage(calls::CallManager::default());
+            // Pure Wayland sessions may have no X11 hotkey service. Keep the rest of Pingo usable.
+            let shortcuts_available = match app.handle().plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app, _, event| {
+                let _ = app.state::<calls::CallManager>().ptt(event.state == ShortcutState::Pressed);
+                let _ = app.emit("desktop-ptt", event.state == ShortcutState::Pressed);
+            }).build()) {
+                Ok(()) => true,
+                Err(error) => { tracing::warn!(%error, "global shortcuts unavailable; use in-app push-to-talk"); false }
+            };
             app.manage(std::sync::Arc::new(video::VideoHub::default()));
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
@@ -142,8 +149,8 @@ pub fn run() {
                 }
             });
             let preferences = Preferences::load(&app.path().app_config_dir()?.join("preferences.json"));
-            if let Some(shortcut) = preferences.push_to_talk_shortcut.as_deref() && let Err(error) = app.global_shortcut().register(shortcut) { tracing::warn!(%error, "global push-to-talk unavailable; use in-app shortcut"); }
-            app.manage(DesktopState { preferences: std::sync::Mutex::new(preferences), invites: std::sync::Mutex::new(Vec::new()) });
+            if shortcuts_available && let Some(shortcut) = preferences.push_to_talk_shortcut.as_deref() && let Err(error) = app.global_shortcut().register(shortcut) { tracing::warn!(%error, "global push-to-talk unavailable; use in-app shortcut"); }
+            app.manage(DesktopState { shortcuts_available, preferences: std::sync::Mutex::new(preferences), invites: std::sync::Mutex::new(Vec::new()) });
             let handle = app.handle().clone();
             app.deep_link().on_open_url(move |event| accept_links(&handle, event.urls().into_iter().map(|u| u.to_string())));
             if let Some(urls) = app.deep_link().get_current()? { accept_links(app.handle(), urls.into_iter().map(|u| u.to_string())); }

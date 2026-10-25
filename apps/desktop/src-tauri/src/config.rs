@@ -10,6 +10,7 @@ pub struct Preferences {
 }
 
 pub struct DesktopState {
+    pub shortcuts_available: bool,
     pub preferences: Mutex<Preferences>,
     pub invites: Mutex<Vec<String>>,
 }
