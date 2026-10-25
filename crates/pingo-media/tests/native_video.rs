@@ -6,7 +6,7 @@ use pingo_media::{
     video::{
         capture::{CaptureOptions, ScreenCapturer, synthetic::SyntheticScreen},
         color::{I420Frame, psnr},
-        encode::VideoMode,
+        encode::{EncodedVideoFrame, VideoMode},
         simulcast::{VideoPublishConfig, VideoSource},
     },
 };
@@ -97,11 +97,13 @@ async fn exercise(url: &str, a_token: String, b_token: String, mode: VideoMode) 
     let a = Native::join(url, a_token).await;
     let mut b = Native::join(url, b_token).await;
     a.commands.send(Command::PublishAudio(false)).await.unwrap();
-    let mut config = VideoPublishConfig::screen(320, 180, mode);
+    let mut config = VideoPublishConfig::screen(192, 108, mode);
     config.prefer_hardware = false;
     // The 60 fps low layer also needs a quality budget. Congestion/bitrate
     // adaptation is covered independently; this fixture measures decode quality.
     config.bitrate = 2_000_000;
+    // Protocol/cadence fixture stays small so debug conversion is not a
+    // throughput benchmark. The release example measures 1080p/4K separately.
     a.commands
         .send(Command::PublishVideo {
             source: VideoSource::Screen,
@@ -113,7 +115,7 @@ async fn exercise(url: &str, a_token: String, b_token: String, mode: VideoMode) 
         .await;
     let feed = a.commands.clone();
     let feeding = tokio::task::spawn_local(async move {
-        let mut source = SyntheticScreen::new(320, 180, mode == VideoMode::Motion).unwrap();
+        let mut source = SyntheticScreen::new(192, 108, mode == VideoMode::Motion).unwrap();
         source
             .start(CaptureOptions {
                 max_fps: mode.fps(),
@@ -134,50 +136,72 @@ async fn exercise(url: &str, a_token: String, b_token: String, mode: VideoMode) 
             .unwrap();
         }
     });
-    let mut decoder = Decoder::new().unwrap();
-    let mut timestamps = Vec::new();
-    let mut sizes = Vec::new();
-    let mut minimum = f64::INFINITY;
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(4);
-    let mut source = SyntheticScreen::new(320, 180, mode == VideoMode::Motion).unwrap();
-    source
-        .start(CaptureOptions {
-            max_fps: mode.fps(),
-            ..Default::default()
-        })
-        .await
-        .unwrap();
-    let mut samples = 0;
+    // Keep image generation, decoding and PSNR off the RTC executor. A debug
+    // PSNR scan can otherwise stall the 10 ms audio clock for hundreds of ms.
+    let mut frames = Vec::new();
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(4200);
     loop {
         tokio::select! {
-            _=tokio::time::sleep_until(deadline)=>break,
-            event=b.events.recv()=>match event.unwrap() {
-                RtcEvent::VideoFrame { frame,.. }=>{
-                    if let Some(decoded)=decoder.decode(&frame.data).unwrap() {
-                        let size=decoded.dimensions();assert!(matches!(size,(320,180)|(160,90)),"{size:?}");
-                        sizes.push(size);timestamps.push(frame.timestamp.as_secs_f64());
-                        // Compare independent decoded samples against the deterministic
-                        // generator around the source RTP clock (with a bounded
-                        // allowance for SFU layer-switch clock adjustment).
-                        if timestamps.len()%15==1 {
-                            let mut best=f64::NEG_INFINITY;
-                            let guess=((frame.timestamp.as_secs_f64()-0.1).max(0.0)*mode.fps() as f64).round() as u64;
-                            let candidates=if mode==VideoMode::Motion { guess.saturating_sub(4)..guess+5 } else { 0..1 };
-                            for index in candidates {
-                                let reference=I420Frame::from_capture(&source.frame_at(index)).unwrap().scale(size.0 as u32,size.1 as u32).unwrap();
-                                best=best.max(psnr(&reference,&decoded).unwrap());
-                            }
-                            minimum=minimum.min(best);samples+=1;
-                        }
-                    }
-                }
-                RtcEvent::Error { code,message }=>panic!("{code}: {message}"),
-                RtcEvent::DeviceError(error)=>panic!("{error}"),
-                _=>{}
+            _ = tokio::time::sleep_until(deadline) => break,
+            event = b.events.recv() => match event.unwrap() {
+                RtcEvent::VideoFrame { frame, .. } => frames.push(frame),
+                RtcEvent::Error { code, message } => panic!("{code}: {message}"),
+                RtcEvent::DeviceError(error) => panic!("{error}"),
+                _ => {}
             }
         }
     }
     feeding.await.unwrap();
+    tokio::task::spawn_blocking(move || verify_frames(frames, mode))
+        .await
+        .unwrap();
+    // Renegotiated stop must be visible remotely.
+    a.commands
+        .send(Command::PublishVideo {
+            source: VideoSource::Screen,
+            config: None,
+        })
+        .await
+        .unwrap();
+    b.wait(|e| matches!(e, RtcEvent::TrackUnpublished { .. }))
+        .await;
+    a.stop().await;
+    b.stop().await;
+}
+fn verify_frames(frames: Vec<EncodedVideoFrame>, mode: VideoMode) {
+    let mut decoder = Decoder::new().unwrap();
+    let mut timestamps = Vec::new();
+    let mut sizes = Vec::new();
+    let mut minimum = f64::INFINITY;
+    let mut samples = 0;
+    let source = SyntheticScreen::new(192, 108, mode == VideoMode::Motion).unwrap();
+    for frame in frames {
+        if let Some(decoded) = decoder.decode(&frame.data).unwrap() {
+            let size = decoded.dimensions();
+            assert!(matches!(size, (192, 108) | (96, 54)), "{size:?}");
+            sizes.push(size);
+            timestamps.push(frame.timestamp.as_secs_f64());
+            if timestamps.len() % 15 == 1 {
+                let mut best = f64::NEG_INFINITY;
+                let guess = ((frame.timestamp.as_secs_f64() - 0.1).max(0.0) * mode.fps() as f64)
+                    .round() as u64;
+                let candidates = if mode == VideoMode::Motion {
+                    guess.saturating_sub(4)..guess + 5
+                } else {
+                    0..1
+                };
+                for index in candidates {
+                    let reference = I420Frame::from_capture(&source.frame_at(index))
+                        .unwrap()
+                        .scale(size.0 as u32, size.1 as u32)
+                        .unwrap();
+                    best = best.max(psnr(&reference, &decoded).unwrap());
+                }
+                minimum = minimum.min(best);
+                samples += 1;
+            }
+        }
+    }
     assert!(
         timestamps.len() >= if mode == VideoMode::Text { 35 } else { 90 },
         "only {} {mode:?} decoded frames",
@@ -203,18 +227,6 @@ async fn exercise(url: &str, a_token: String, b_token: String, mode: VideoMode) 
             .copied()
             .collect::<std::collections::HashSet<_>>()
     );
-    // Renegotiated stop must be visible remotely.
-    a.commands
-        .send(Command::PublishVideo {
-            source: VideoSource::Screen,
-            config: None,
-        })
-        .await
-        .unwrap();
-    b.wait(|e| matches!(e, RtcEvent::TrackUnpublished { .. }))
-        .await;
-    a.stop().await;
-    b.stop().await;
 }
 async fn in_process(mode: VideoMode) {
     let (sfu, http, url) = server().await;
@@ -256,29 +268,54 @@ async fn native_screen_motion_through_in_process_sfu() {
 
 #[tokio::test]
 async fn failed_video_start_keeps_the_call_connected() {
-    tokio::task::LocalSet::new().run_until(async {
-        let (sfu, http, url) = server().await;
-        let mut a = Native::join(&url, admission("publisher")).await;
-        let mut b = Native::join(&url, admission("viewer")).await;
-        let mut config = VideoPublishConfig::screen(320, 180, VideoMode::Text);
-        config.prefer_hardware = false;
-        #[cfg(not(feature = "vp8"))]
-        { config.codec = pingo_media::video::encode::VideoCodec::Vp8; }
-        #[cfg(feature = "vp8")]
-        { config.bitrate = 1; }
-        a.commands.send(Command::PublishVideo { source: VideoSource::Screen, config: Some(config) }).await.unwrap();
-        a.wait(|e| matches!(e, RtcEvent::DeviceError(_))).await;
-        a.commands.send(Command::Data(pingo_proto::DataMsg::Reaction {
-            participant_id: String::new(), emoji: "🎥".into(),
-        })).await.unwrap();
-        b.wait(|e| matches!(e, RtcEvent::Data(pingo_proto::DataMsg::Reaction { emoji, .. }) if emoji == "🎥")).await;
-        // Stop also wins over any encoder startup still in flight.
-        a.commands.send(Command::PublishVideo { source: VideoSource::Screen, config: None }).await.unwrap();
-        a.stop().await;
-        b.stop().await;
-        sfu.shutdown().await;
-        http.abort();
-    }).await;
+    tokio::task::LocalSet::new()
+        .run_until(async {
+            let (sfu, http, url) = server().await;
+            let mut a = Native::join(&url, admission("publisher")).await;
+            let mut b = Native::join(&url, admission("viewer")).await;
+            let mut config = VideoPublishConfig::screen(320, 180, VideoMode::Text);
+            config.prefer_hardware = false;
+            #[cfg(not(feature = "vp8"))]
+            {
+                config.codec = pingo_media::video::encode::VideoCodec::Vp8;
+            }
+            #[cfg(feature = "vp8")]
+            {
+                config.bitrate = 1;
+            }
+            a.commands
+                .send(Command::PublishVideo {
+                    source: VideoSource::Screen,
+                    config: Some(config),
+                })
+                .await
+                .unwrap();
+            a.wait(|e| matches!(e, RtcEvent::DeviceError(_))).await;
+            // ICE Connected precedes SCTP channel readiness. Use authoritative
+            // signaling state to prove that a failed encoder did not kill the call.
+            a.commands
+                .send(Command::Settings(Box::new(AudioSettings {
+                    gate: pingo_media::audio::level::Gate::Muted,
+                    ..Default::default()
+                })))
+                .await
+                .unwrap();
+            b.wait(|e| matches!(e, RtcEvent::ParticipantUpdated(p) if p.muted))
+                .await;
+            // Stop also wins over any encoder startup still in flight.
+            a.commands
+                .send(Command::PublishVideo {
+                    source: VideoSource::Screen,
+                    config: None,
+                })
+                .await
+                .unwrap();
+            a.stop().await;
+            b.stop().await;
+            sfu.shutdown().await;
+            http.abort();
+        })
+        .await;
 }
 
 #[tokio::test]
@@ -288,7 +325,7 @@ async fn native_camera_and_stereo_screen_audio_have_independent_tracks() {
         let a = Native::join(&url, admission("publisher")).await;
         let mut b = Native::join(&url, admission("viewer")).await;
         a.commands.send(Command::PublishAudio(false)).await.unwrap();
-        let mut config = VideoPublishConfig::screen(320, 180, VideoMode::Motion);
+        let mut config = VideoPublishConfig::screen(192, 108, VideoMode::Motion);
         config.source = VideoSource::Camera;
         config.fps = 25;
         config.bitrate = 2_000_000;
@@ -308,7 +345,7 @@ async fn native_camera_and_stereo_screen_audio_have_independent_tracks() {
         }
         let feed = a.commands.clone();
         let feeding = tokio::task::spawn_local(async move {
-            let mut screen = SyntheticScreen::new(320, 180, true).unwrap();
+            let mut screen = SyntheticScreen::new(192, 108, true).unwrap();
             screen.start(CaptureOptions { max_fps: 25, ..Default::default() }).await.unwrap();
             let mut tick = tokio::time::interval(Duration::from_millis(10));
             tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -338,7 +375,7 @@ async fn native_camera_and_stereo_screen_audio_have_independent_tracks() {
                     RtcEvent::VideoFrame { track, frame } => {
                         assert_eq!(track.kind, TrackKind::Camera);
                         if let Some(decoded) = decoder.decode(&frame.data).unwrap() {
-                            assert!(matches!(decoded.dimensions(), (80, 44) | (160, 90) | (320, 180)));
+                            assert!(matches!(decoded.dimensions(), (48, 26) | (96, 54) | (192, 108)));
                             decoded_frames += 1;
                         }
                     }
