@@ -86,7 +86,13 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     await expect(alice.locator('.stage-tile')).toHaveCount(2);
     await expect.poll(() => inbound(alice, 'audio'), { timeout: 25_000 }).toBeGreaterThan(0);
     await expect.poll(() => inbound(bob, 'audio'), { timeout: 25_000 }).toBeGreaterThan(0);
-    await expect(bob.locator('.stage-tile.speaking').filter({ hasText: 'CallAlice' })).toBeVisible();
+    // Chromium's fake microphone beeps briefly once per second. Playwright's default
+    // visibility backoff reaches one second and can sample only the silent gaps.
+    await expect
+      .poll(() => bob.locator('.stage-tile.speaking').filter({ hasText: 'CallAlice' }).isVisible(), {
+        intervals: [50],
+      })
+      .toBe(true);
     await alice.getByRole('button', { name: 'Mute', exact: true }).click();
     await expect(bob.locator('.stage-tile.speaking').filter({ hasText: 'CallAlice' })).toHaveCount(0);
     let previous = await inbound(bob, 'audio'),
@@ -144,7 +150,7 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
         JSON.stringify(
           await p.evaluate(async () =>
             Promise.all(
-              window.__peers.map(async (pc) => ({
+              (window.__peers ?? []).map(async (pc) => ({
                 connection: pc.connectionState,
                 ice: pc.iceConnectionState,
                 signaling: pc.signalingState,
