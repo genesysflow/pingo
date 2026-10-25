@@ -12,13 +12,17 @@ use std::time::Duration;
 #[ignore = "requires an interactive ScreenCast portal picker and PipeWire"]
 async fn portal_capture_encodes_a_real_frame() {
     let mut capture = PortalScreen::default();
-    tokio::time::timeout(
+    let started = tokio::time::timeout(
         Duration::from_secs(45),
         capture.start(CaptureOptions::default()),
     )
-    .await
-    .expect("accept the portal picker within 45 seconds")
-    .unwrap();
+    .await;
+    if started.is_err() {
+        capture.stop().await.unwrap();
+    }
+    started
+        .expect("accept the portal picker within 45 seconds")
+        .unwrap();
     let (mut capture, frame) = tokio::task::spawn_blocking(move || {
         let frame = capture.next_frame(Duration::from_secs(5));
         (capture, frame)
