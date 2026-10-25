@@ -1,6 +1,9 @@
 //! Test-only host for the real backend, which currently has a binary target.
 //! Import production modules rather than copying admission, schema or SFU hooks.
 //! Keep tests disabled on this helper to avoid recursively importing server tests.
+// Clippy --all-targets also compiles a test target despite lib.test = false.
+#![cfg(not(test))]
+
 #[path = "../../../pingo-server/src/dms.rs"]
 pub mod dms;
 #[path = "../../../pingo-server/src/files.rs"]

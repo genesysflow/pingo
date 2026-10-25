@@ -87,7 +87,7 @@ impl EncoderWorker {
                     {
                         let _ = output.try_send(Err(error));
                     }
-                    match encoder.encode(&frame) {
+                    match encoder.encode(frame) {
                         Ok(packets) => {
                             for packet in packets {
                                 if output.try_send(Ok(packet)).is_err() {
@@ -137,6 +137,16 @@ impl EncoderWorker {
     }
 }
 
+impl Drop for EncoderWorker {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+        self.input.take();
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -175,14 +185,5 @@ mod tests {
         assert!(high.timestamp > first[0].timestamp);
         let mut decoder = openh264::decoder::Decoder::new().unwrap();
         assert!(decoder.decode(&high.data).unwrap().is_some());
-    }
-}
-impl Drop for EncoderWorker {
-    fn drop(&mut self) {
-        self.stop.store(true, Ordering::Relaxed);
-        self.input.take();
-        if let Some(thread) = self.thread.take() {
-            let _ = thread.join();
-        }
     }
 }
