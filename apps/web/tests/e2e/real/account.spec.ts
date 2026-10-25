@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { signup, createSpace, send } from './helpers';
+import { signup, createSpace, send, submitAuth } from './helpers';
 
 test('password sessions, profile, uploads, room management, search and email-code sign-in', async ({
   page,
@@ -66,7 +66,7 @@ test('password sessions, profile, uploads, room management, search and email-cod
   const body = await response.json();
   expect(body.status).toBe('success');
   await page.getByLabel('Email code', { exact: true }).fill(body.value);
-  await page.getByRole('button', { name: 'Verify email code', exact: true }).click();
+  await submitAuth(page, page.getByRole('button', { name: 'Verify email code', exact: true }), 'magic/verify');
   await expect(page.getByRole('heading', { name: 'Make a little space.' })).toBeVisible();
   expect(errors).toEqual([]);
 });
