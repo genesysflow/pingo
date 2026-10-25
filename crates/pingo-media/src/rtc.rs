@@ -103,6 +103,7 @@ pub struct Session {
     joined: bool,
     pub connected: bool,
     tracks: HashMap<Mid, TrackInfo>,
+    video_needs_keyframe: HashSet<Mid>,
     remote_muted: HashSet<String>,
     outgoing: VecDeque<ClientMsg>,
     events: VecDeque<RtcEvent>,
@@ -155,6 +156,7 @@ impl Session {
             joined: false,
             connected: false,
             tracks: HashMap::new(),
+            video_needs_keyframe: HashSet::new(),
             remote_muted: HashSet::new(),
             outgoing: VecDeque::new(),
             events: VecDeque::new(),
@@ -278,6 +280,10 @@ impl Session {
                         self.receiver.add_participant(track_key(&track))?;
                     }
                 }
+                if matches!(track.kind, TrackKind::Camera | TrackKind::Screen) {
+                    self.video_needs_keyframe
+                        .insert(Mid::from(track.mid.as_str()));
+                }
                 self.tracks
                     .insert(Mid::from(track.mid.as_str()), track.clone());
                 self.apply_receive_settings();
@@ -287,6 +293,7 @@ impl Session {
                 participant_id,
                 mid,
             } => {
+                self.video_needs_keyframe.remove(&Mid::from(mid.as_str()));
                 if let Some(track) = self.tracks.remove(&Mid::from(mid.as_str())) {
                     self.receiver.remove_participant(&track_key(&track));
                 }
@@ -315,6 +322,8 @@ impl Session {
                         true
                     }
                 });
+                self.video_needs_keyframe
+                    .retain(|mid| self.tracks.contains_key(mid));
                 self.events
                     .push_back(RtcEvent::ParticipantLeft(participant_id));
             }
@@ -369,8 +378,15 @@ impl Session {
                         };
                         let keyframe = data.is_keyframe();
                         if !data.contiguous {
-                            self.request_video_keyframe(&track.mid)?;
+                            self.video_needs_keyframe.insert(data.mid);
                         }
+                        if self.video_needs_keyframe.contains(&data.mid) && !keyframe {
+                            self.request_video_keyframe(&track.mid)?;
+                            // A desktop decoder cannot recover missing references
+                            // from later deltas; resume at an independent frame.
+                            return Ok(());
+                        }
+                        self.video_needs_keyframe.remove(&data.mid);
                         self.events.push_back(RtcEvent::VideoFrame {
                             track,
                             frame: EncodedVideoFrame {

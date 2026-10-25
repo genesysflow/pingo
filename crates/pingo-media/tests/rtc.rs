@@ -562,10 +562,41 @@ fn video_simulcast_renegotiates_frames_and_pli_without_audio_hardware() {
         })
         .unwrap()
         .pt();
-    writer
-        .write(pt, clock, MediaTime::from_90khz(0), frames[1].data.clone())
+    let delta = encoder
+        .encode(&source.frame_at(2))
+        .unwrap()
+        .into_iter()
+        .find(|f| f.rid.as_deref() == Some("h"))
         .unwrap();
-    for step in 91..=130 {
+    assert!(!delta.keyframe);
+    writer
+        .write(pt, clock, MediaTime::from_90khz(0), delta.data)
+        .unwrap();
+    for step in 91..=110 {
+        let at = clock + Duration::from_millis(step * 5);
+        client.timeout(at).unwrap();
+        peer.handle_input(Input::Timeout(at)).unwrap();
+        exchange(&mut client, &mut peer, at, &mut events);
+    }
+    while let Some(event) = client.next_event() {
+        assert!(
+            !matches!(event, RtcEvent::VideoFrame { .. }),
+            "initial deltas need references"
+        );
+    }
+    assert!(events.iter().any(|event| matches!(event,
+        Event::KeyframeRequest(request) if request.mid == incoming
+    )));
+    peer.writer(incoming)
+        .unwrap()
+        .write(
+            pt,
+            clock,
+            MediaTime::from_90khz(9000),
+            frames[1].data.clone(),
+        )
+        .unwrap();
+    for step in 111..=150 {
         let at = clock + Duration::from_millis(step * 5);
         client.timeout(at).unwrap();
         peer.handle_input(Input::Timeout(at)).unwrap();
