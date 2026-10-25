@@ -10,8 +10,9 @@
   let devices = $state<Device[]>([]), settings = $state<AudioSettings>(untrack(() => ({ ...call.audio }))), level = $state(0), testing = $state(false), error = $state('');
   const sessionId = crypto.randomUUID();
   let stops: UnlistenFn[] = [], disposed = false;
+  let ready: Promise<void>;
   onMount(() => {
-    void Promise.all([
+    ready = Promise.all([
       listen<Device[]>('native-devices', e => { devices = e.payload; }),
       listen<{ sessionId: string; event: { type: string; level: number; message: string } }>('native-call', e => {
         if (e.payload.sessionId !== sessionId) return;
@@ -20,13 +21,18 @@
         if (e.payload.event.type === 'error') error = e.payload.event.message;
       }),
     ]).then(next => { if (disposed) next.forEach(stop => stop()); else stops = next; });
+    void ready.catch(e => { error = String(e); });
     void invoke<Device[]>('call_devices').then(next => { devices = next; }).catch(e => { error = String(e); });
   });
-  function stop() { testing = false; level = 0; void invoke('call_leave', { sessionId }); }
+  function stop() { testing = false; level = 0; void invoke('call_leave', { sessionId }).catch(e => { if (!disposed) error = String(e); }); }
   async function test() {
-    error = '';
-    try { await invoke('call_loopback', { sessionId, settings: nativeSettings(settings) }); testing = true; }
-    catch (e) { error = String(e); }
+    error = ''; testing = true;
+    try {
+      await ready;
+      if (disposed || !testing) return;
+      await invoke('call_loopback', { sessionId, settings: nativeSettings(settings) });
+      if (disposed) stop();
+    } catch (e) { testing = false; error = String(e); }
   }
   function finish() {
     stop(); call.configureAudio(settings); localStorage.setItem('pingo-sound-checked', 'true'); complete();
