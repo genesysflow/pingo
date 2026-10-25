@@ -148,6 +148,8 @@ pub fn run() {
             app.deep_link().on_open_url(move |event| accept_links(&handle, event.urls().into_iter().map(|u| u.to_string())));
             if let Some(urls) = app.deep_link().get_current()? { accept_links(app.handle(), urls.into_iter().map(|u| u.to_string())); }
             #[cfg(target_os = "linux")]
+            tracing::info!(dmabuf_workaround = ?std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER"), gdk_backend = ?std::env::var_os("GDK_BACKEND"), "WebKitGTK renderer configuration; try WEBKIT_DISABLE_DMABUF_RENDERER=1 if the window is blank");
+            #[cfg(target_os = "linux")]
             if std::env::var_os("WAYLAND_DISPLAY").is_some() { tracing::info!("Wayland: global shortcuts may require XWayland; in-app push-to-talk remains available"); }
             let open = MenuItem::with_id(app, "open", "Open Pingo", true, None::<&str>)?;
             let mute = MenuItem::with_id(app, "mute", "Mute / unmute", true, None::<&str>)?;
