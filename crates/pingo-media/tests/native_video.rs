@@ -1,4 +1,4 @@
-//! In-process SFU and optional full RxFerrix executable, using production Client.
+//! Real in-process SFU and RxFerrix backend, using the production Client.
 use openh264::{decoder::Decoder, formats::YUVSource};
 use pingo_media::{
     pipeline::AudioSettings,
@@ -419,174 +419,17 @@ async fn native_camera_and_stereo_screen_audio_have_independent_tracks() {
     }).await;
 }
 
-struct Backend {
-    child: std::process::Child,
-    _dir: tempfile::TempDir,
-    base: String,
-}
-impl Drop for Backend {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-impl Backend {
-    async fn start() -> Self {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
-        drop(listener);
-        let dir = tempfile::tempdir().unwrap();
-        let path = std::env::var("PINGO_SERVER").unwrap_or_else(|_| {
-            format!(
-                "{}/../../target/debug/pingo-server",
-                env!("CARGO_MANIFEST_DIR")
-            )
-        });
-        let child = std::process::Command::new(path)
-            .args([
-                "serve",
-                "--dev",
-                "--http",
-                &address.to_string(),
-                "--dir",
-                dir.path().to_str().unwrap(),
-                "--codegen-out",
-                dir.path().join("codegen").to_str().unwrap(),
-            ])
-            .env("PINGO_PUBLIC_IPS", "127.0.0.1")
-            .env("PINGO_UDP_PORT", "0")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .expect("cargo build -p pingo-server first");
-        let backend = Self {
-            child,
-            _dir: dir,
-            base: format!("http://{address}"),
-        };
-        tokio::time::timeout(Duration::from_secs(20), async {
-            loop {
-                if reqwest::get(format!("{}/api/health", backend.base))
-                    .await
-                    .is_ok_and(|r| r.status().is_success())
-                {
-                    break;
-                }
-                tokio::time::sleep(Duration::from_millis(50)).await;
-            }
-        })
-        .await
-        .unwrap();
-        backend
-    }
-    async fn post(
-        &self,
-        path: &str,
-        value: serde_json::Value,
-        access: Option<&str>,
-    ) -> serde_json::Value {
-        let mut request = reqwest::Client::new()
-            .post(format!("{}{path}", self.base))
-            .json(&value);
-        if let Some(access) = access {
-            request = request.bearer_auth(access);
-        }
-        request.send().await.unwrap().json().await.unwrap()
-    }
-    async fn call(
-        &self,
-        kind: &str,
-        path: &str,
-        args: serde_json::Value,
-        access: Option<&str>,
-    ) -> serde_json::Value {
-        let reply = self
-            .post(
-                &format!("/api/{kind}"),
-                serde_json::json!({"path":path,"args":args}),
-                access,
-            )
-            .await;
-        assert_eq!(reply["status"], "success", "{reply}");
-        reply["value"].clone()
-    }
-    async fn access(&self, email: &str) -> String {
-        self.post(
-            "/api/auth/magic/request",
-            serde_json::json!({"email":email}),
-            None,
-        )
-        .await;
-        let code = self
-            .call(
-                "action",
-                "dev:last_code",
-                serde_json::json!({"email":email}),
-                None,
-            )
-            .await;
-        self.post(
-            "/api/auth/magic/verify",
-            serde_json::json!({"email":email,"code":code}),
-            None,
-        )
-        .await["accessToken"]
-            .as_str()
-            .unwrap()
-            .into()
-    }
-}
 #[tokio::test]
-#[ignore = "requires cargo build -p pingo-server; runs the real RxFerrix executable"]
 async fn native_video_full_server_text_and_motion() {
     tokio::task::LocalSet::new()
         .run_until(async {
-            let server = Backend::start().await;
-            let space = server
-                .call("mutation", "dev:seed", serde_json::json!({}), None)
-                .await;
-            let a = server.access("alex@pingo.test").await;
-            let b = server.access("sam@pingo.test").await;
-            let rooms = server
-                .call(
-                    "query",
-                    "rooms:list",
-                    serde_json::json!({"space":space}),
-                    Some(&a),
-                )
-                .await;
-            let room = rooms
-                .as_array()
-                .unwrap()
-                .iter()
-                .find(|r| r["name"] == "Lounge")
-                .unwrap()["_id"]
-                .clone();
+            let server = pingo_media_test_server::Server::start().await;
             for mode in [VideoMode::Text, VideoMode::Motion] {
-                let mut tokens = Vec::new();
-                for access in [&a, &b] {
-                    tokens.push(
-                        server
-                            .call(
-                                "mutation",
-                                "voice:join",
-                                serde_json::json!({"room":room}),
-                                Some(access),
-                            )
-                            .await["token"]
-                            .as_str()
-                            .unwrap()
-                            .to_owned(),
-                    );
-                }
-                exercise(
-                    &format!("{}/rtc", server.base.replace("http://", "ws://")),
-                    tokens.remove(0),
-                    tokens.remove(0),
-                    mode,
-                )
-                .await;
+                let [a, b] = server.tokens().await;
+                exercise(&server.url, a, b, mode).await;
+                server.assert_empty().await;
             }
+            server.stop().await;
         })
         .await;
 }

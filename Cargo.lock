@@ -3183,22 +3183,38 @@ dependencies = [
  "nnnoiseless",
  "openh264",
  "opus",
+ "pingo-media-test-server",
  "pingo-proto",
  "pingo-sfu",
  "pipewire",
- "reqwest",
  "rtrb",
  "rubato",
  "serde",
  "serde_json",
  "str0m",
- "tempfile",
  "thiserror 2.0.21",
  "tokio",
  "tokio-tungstenite 0.28.0",
  "tracing",
  "webrtc-audio-processing",
  "yuvutils-rs",
+]
+
+[[package]]
+name = "pingo-media-test-server"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "axum",
+ "bitflags 2.13.2",
+ "pingo-proto",
+ "pingo-sfu",
+ "reqwest",
+ "rxferrix",
+ "serde_json",
+ "tokio",
+ "tower",
+ "tracing",
 ]
 
 [[package]]
