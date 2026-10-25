@@ -620,6 +620,71 @@ fn shareable_audio(node: &PipeWireNode) -> bool {
         && !node.application.to_ascii_lowercase().contains("pingo")
         && !node.name.to_ascii_lowercase().contains("pingo")
 }
+
+/// A system mix made from per-application PipeWire monitor ports. Monitoring
+/// the hardware sink itself would also capture Pingo's remote-call playback.
+/// Sources are a snapshot at start; restart to include newly opened streams.
+#[derive(Default)]
+pub struct SystemAudioCapturer {
+    sources: Vec<(PipeWireNode, AppAudioCapturer)>,
+    next: Option<Instant>,
+}
+impl SystemAudioCapturer {
+    pub fn start(&mut self) -> Result<()> {
+        self.stop();
+        let mut sources = Vec::new();
+        for node in AppAudioCapturer::list_sources()? {
+            let mut capture = AppAudioCapturer::default();
+            capture.start(&node.serial)?;
+            sources.push((node, capture));
+        }
+        self.sources = sources;
+        self.next = Some(Instant::now());
+        Ok(())
+    }
+    pub fn sources(&self) -> impl Iterator<Item = &PipeWireNode> {
+        self.sources.iter().map(|(node, _)| node)
+    }
+    pub fn next_frame(&mut self, timeout: Duration) -> Result<Option<crate::StereoFrame>> {
+        let Some(due) = self.next else {
+            return Ok(None);
+        };
+        let wait = due.saturating_duration_since(Instant::now());
+        thread::sleep(wait.min(timeout));
+        if Instant::now() < due {
+            return Ok(None);
+        }
+        let mut mix = [[0.0; 2]; crate::FRAME_SAMPLES];
+        self.sources.retain_mut(|(node, capture)| {
+            match capture.next_frame(Duration::ZERO) {
+                Ok(Some(frame)) => add_audio(&mut mix, &frame),
+                Ok(None) => {}
+                Err(error) => {
+                    tracing::debug!(source = %node.serial, %error, "shared audio source stopped");
+                    return false;
+                }
+            }
+            true
+        });
+        for sample in mix.iter_mut().flatten() {
+            *sample = sample.clamp(-1.0, 1.0);
+        }
+        self.next = Some((due + Duration::from_millis(10)).max(Instant::now()));
+        Ok(Some(mix))
+    }
+    pub fn stop(&mut self) {
+        self.sources.clear();
+        self.next = None;
+    }
+}
+fn add_audio(mix: &mut crate::StereoFrame, frame: &crate::StereoFrame) {
+    for (out, input) in mix.iter_mut().flatten().zip(frame.iter().flatten()) {
+        if input.is_finite() {
+            *out += input;
+        }
+    }
+}
+
 fn run_audio(
     serial: &str,
     stop: &AtomicBool,
@@ -703,6 +768,14 @@ fn run_audio(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn system_audio_mix_preserves_stereo_and_ignores_invalid_samples() {
+        let mut mix = [[0.0; 2]; crate::FRAME_SAMPLES];
+        add_audio(&mut mix, &[[0.25, -0.5]; crate::FRAME_SAMPLES]);
+        add_audio(&mut mix, &[[0.5, 0.25]; crate::FRAME_SAMPLES]);
+        add_audio(&mut mix, &[[f32::NAN, f32::INFINITY]; crate::FRAME_SAMPLES]);
+        assert!(mix.iter().all(|sample| *sample == [0.75, -0.25]));
+    }
     #[test]
     fn video_queue_replaces_old_frames_and_retains_terminal_errors() {
         let queue = LatestFrame::new();

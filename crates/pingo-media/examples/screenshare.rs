@@ -37,7 +37,7 @@ fn flag(name: &str) -> bool {
 async fn main() -> anyhow::Result<()> {
     if flag("--help") {
         println!(
-            "screenshare --url ws://host/rtc --token TOKEN [--synthetic] [--motion] [--fps N] [--vp8] [--software] [--seconds N] [--source monitor|window] [--restore-token-file PATH] [--audio-app SERIAL]\n--capture-only runs capture and encode without a room. --synthetic accepts --width/--height (default 640x360). --probe reports capture nodes. Tokens may use PINGO_MEDIA_TOKEN."
+            "screenshare --url ws://host/rtc --token TOKEN [--synthetic] [--motion] [--fps N] [--vp8] [--software] [--seconds N] [--source monitor|window] [--restore-token-file PATH] [--audio-app SERIAL | --audio-system]\n--capture-only runs capture and encode without a room. --synthetic accepts --width/--height (default 640x360). --probe reports capture nodes. Tokens may use PINGO_MEDIA_TOKEN."
         );
         return Ok(());
     }
@@ -199,16 +199,28 @@ async fn main() -> anyhow::Result<()> {
         result
     });
     #[cfg(all(target_os = "linux", feature = "linux-capture"))]
-    let audio_task = if let Some(serial) = arg("--audio-app") {
+    let audio_task = if arg("--audio-app").is_some() || flag("--audio-system") {
         let tx = commands.clone();
         let stopped = stop.clone();
         commands.send(Command::PublishScreenAudio(true)).await?;
         Some(tokio::task::spawn_blocking(
             move || -> anyhow::Result<()> {
-                let mut capture = pingo_media::video::capture::linux::AppAudioCapturer::default();
-                capture.start(&serial)?;
+                use pingo_media::video::capture::linux::{AppAudioCapturer, SystemAudioCapturer};
+                let system = flag("--audio-system");
+                let mut app = AppAudioCapturer::default();
+                let mut mix = SystemAudioCapturer::default();
+                if system {
+                    mix.start()?;
+                } else {
+                    app.start(&arg("--audio-app").expect("selected app serial"))?;
+                }
                 while !stopped.load(std::sync::atomic::Ordering::Relaxed) {
-                    if let Some(frame) = capture.next_frame(Duration::from_millis(20))? {
+                    let frame = if system {
+                        mix.next_frame(Duration::from_millis(20))?
+                    } else {
+                        app.next_frame(Duration::from_millis(20))?
+                    };
+                    if let Some(frame) = frame {
                         let _ = tx.try_send(Command::CaptureScreenAudio(Box::new(frame)));
                     }
                 }
