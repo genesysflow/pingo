@@ -1,5 +1,6 @@
 // Run after `cargo build -p pingo-server -p pingo-media --example screenshare`
-// and `cd apps/web && bun install`. Pass --vp8 with a vp8-enabled example.
+// and `cd apps/web && bun install`. Pass --vp8 with a vp8-enabled example,
+// or --hardware to exercise VAAPI (requires a vaapi-enabled example/device).
 // Uses the same Chromium Playwright dependency as the web suite; no UI files change.
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
@@ -125,7 +126,8 @@ try {
     let nativeLog = '';
     const vp8 = process.argv.includes('--vp8');
     publisher = spawn(process.env.PINGO_NATIVE_PUBLISHER ?? resolve(root, 'target/debug/examples/screenshare'), [
-      '--url', `${base.replace('http:', 'ws:')}/rtc`, '--synthetic', '--software', '--seconds', '25',
+      '--url', `${base.replace('http:', 'ws:')}/rtc`, '--synthetic', '--seconds', '25',
+      ...(process.argv.includes('--hardware') ? [] : ['--software']),
       ...(motion ? ['--motion'] : []), ...(vp8 ? ['--vp8'] : []),
     ], { env: { ...process.env, PINGO_MEDIA_TOKEN: nativeToken }, stdio: ['ignore', 'pipe', 'pipe'] });
     publisher.stdout.on('data', (b) => { nativeLog += b; });
