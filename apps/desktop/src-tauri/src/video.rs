@@ -297,7 +297,7 @@ fn decode(
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::inherit())
         .spawn()
         .map_err(|e| format!("Install FFmpeg for native video: {e}"))?;
     let mut input = child.stdin.take().unwrap();

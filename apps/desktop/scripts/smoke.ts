@@ -87,6 +87,7 @@ try {
   driverOrigin = `http://127.0.0.1:${driverPort}`;
   start(['WebKitWebDriver', `--port=${driverPort}`], 'webdriver', {
     TAURI_WEBVIEW_AUTOMATION: 'true', PINGO_DESKTOP_TEST_HEADLESS: '1',
+    ALSA_CONFIG_PATH: process.env.PINGO_DESKTOP_ALSA_CONFIG ?? process.env.ALSA_CONFIG_PATH,
     XDG_CONFIG_HOME: join(work, 'config'), XDG_DATA_HOME: join(work, 'data'), XDG_CACHE_HOME: join(work, 'cache'),
   });
   await until('WebKitWebDriver', () => webdriver('/status'));
@@ -132,8 +133,12 @@ try {
   await writeFile(join(artifacts, 'native-call.png'), Buffer.from(screenshot, 'base64'));
   if (process.env.PINGO_SMOKE_VIDEO === '1') {
     const { chromium } = createRequire(join(root, 'apps/web/package.json'))('@playwright/test');
-    browser = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--allow-loopback-in-peer-connection', '--autoplay-policy=no-user-gesture-required'] });
+    browser = await chromium.launch({ args: ['--mute-audio', '--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--allow-loopback-in-peer-connection', '--autoplay-policy=no-user-gesture-required'] });
     const page = await (browser as any).newPage();
+    page.on('pageerror', (error: Error) => console.error('Screen publisher page error:', error.message));
+    page.on('console', (message: { type(): string; text(): string }) => {
+      if (message.type() === 'error') console.error('Screen publisher:', message.text());
+    });
     await page.addInitScript(() => {
       localStorage.setItem('pingo-sound-checked', 'true');
       navigator.mediaDevices.getDisplayMedia = async () => {
@@ -152,6 +157,7 @@ try {
     await fn(origin, 'mutation', 'invites:accept', { code: invite }, screenAuth);
     await page.goto(origin + await evaluate('return location.pathname'));
     await page.getByRole('button', { name: 'Start a call', exact: true }).click();
+    await page.waitForFunction(() => !!document.querySelector('.stage-view') && !document.querySelector('.stage-view > [role="status"]'));
     await page.getByRole('button', { name: 'Share your screen', exact: true }).click();
     result.video = await until('remote screen decoded into the native Stage canvas', () => evaluate(`
       const canvas=document.querySelector('canvas[aria-label="Shared screen"]');
@@ -168,6 +174,10 @@ try {
   await click('Leave this call');
   passed = true;
 } catch (error) {
+  if (browser) {
+    const publisher = (browser as any).contexts()[0]?.pages()[0];
+    if (publisher) await writeFile(join(work, 'publisher.json'), JSON.stringify(await publisher.evaluate(() => document.body.innerText).catch(String)));
+  }
   if (session) {
     const diagnostics = await evaluate('return {state:window.__nativeSmoke,canvas:[...document.querySelectorAll("canvas")].map(c=>({label:c.getAttribute("aria-label"),width:c.width,height:c.height})),text:document.body.innerText}').catch(String);
     await writeFile(join(work, 'diagnostics.json'), JSON.stringify(diagnostics, null, 2));
