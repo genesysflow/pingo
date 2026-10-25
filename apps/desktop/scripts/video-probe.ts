@@ -25,12 +25,14 @@ try {
     const code = await child.exited;
     if (code !== 0) throw new Error(`Probe exited ${code}; logs: ${work}`);
     const result = await Bun.file(report).json();
-    if (result.error) throw new Error(`Probe: ${result.error}`);
-    if (result.samples.some((sample: { displayed: number }) => !sample.displayed)) throw new Error(`No displayed frames; logs: ${work}`);
     result.environment = { measuredAt: new Date().toISOString(), cpu: cpus()[0]?.model, kernel: release(),
       gdkBackend: process.env.GDK_BACKEND ?? 'default', waylandDisplay: process.env.WAYLAND_DISPLAY,
       disableDmabufRenderer: process.env.WEBKIT_DISABLE_DMABUF_RENDERER ?? '0', build: 'debug' };
+    const webkit = Bun.spawnSync(['pkg-config', '--modversion', 'webkit2gtk-4.1']);
+    result.environment.webKitGTK = webkit.success ? webkit.stdout.toString().trim() : 'unknown';
     await Bun.write(report, JSON.stringify(result, null, 2) + '\n');
+    if (result.error) throw new Error(`Probe: ${result.error}`);
+    if (result.samples.some((sample: { displayed: number; errors: string[] }) => !sample.displayed || sample.errors.length)) throw new Error(`No displayed frames or display errors; logs: ${work}`);
     passed = true;
     console.log(JSON.stringify(result, null, 2));
   } finally { clearTimeout(timeout); child.kill(); }
