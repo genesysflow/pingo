@@ -17,6 +17,7 @@ use tauri::ipc::{Channel, Response};
 pub type PacketSink = Arc<dyn Fn(RemoteVideoPacket) + Send + Sync>;
 struct Surface {
     generation: u64,
+    subscription_id: String,
     channel: Channel<Response>,
     in_flight: Option<u32>,
     next: u32,
@@ -28,7 +29,12 @@ pub struct VideoHub {
     next_surface: AtomicU64,
 }
 impl VideoHub {
-    pub fn subscribe(&self, key: String, channel: Channel<Response>) -> Result<(), String> {
+    pub fn subscribe(
+        &self,
+        key: String,
+        subscription_id: String,
+        channel: Channel<Response>,
+    ) -> Result<(), String> {
         let mut surfaces = self.surfaces.lock().unwrap();
         if surfaces.len() >= 16 && !surfaces.contains_key(&key) {
             return Err("Too many native video surfaces".into());
@@ -37,6 +43,7 @@ impl VideoHub {
             key,
             Surface {
                 generation: self.next_surface.fetch_add(1, Ordering::Relaxed),
+                subscription_id,
                 channel,
                 in_flight: None,
                 next: 0,
@@ -45,8 +52,14 @@ impl VideoHub {
         );
         Ok(())
     }
-    pub fn unsubscribe(&self, key: &str) {
-        self.surfaces.lock().unwrap().remove(key);
+    pub fn unsubscribe(&self, key: &str, subscription_id: &str) {
+        let mut surfaces = self.surfaces.lock().unwrap();
+        if surfaces
+            .get(key)
+            .is_some_and(|surface| surface.subscription_id == subscription_id)
+        {
+            surfaces.remove(key);
+        }
     }
     pub fn clear_session(&self, session: &str) {
         self.surfaces
@@ -54,8 +67,9 @@ impl VideoHub {
             .unwrap()
             .retain(|key, _| !key.starts_with(&format!("{session}:")));
     }
-    pub fn ack(&self, key: &str, id: u32) {
+    pub fn ack(&self, key: &str, subscription_id: &str, id: u32) {
         if let Some(surface) = self.surfaces.lock().unwrap().get_mut(key)
+            && surface.subscription_id == subscription_id
             && surface.in_flight == Some(id)
         {
             surface.in_flight = None;
@@ -465,7 +479,7 @@ mod tests {
             tx.send(body).unwrap();
             Ok(())
         });
-        hub.subscribe("session:mid".into(), channel.clone())
+        hub.subscribe("session:mid".into(), "old".into(), channel.clone())
             .unwrap();
         let generation = hub.surfaces.lock().unwrap()["session:mid"].generation;
         assert!(hub.raw("session:mid", 1, 1, &[1, 2, 3, 255], 100.0));
@@ -475,12 +489,21 @@ mod tests {
         assert_eq!(frame.len(), 28);
         let id = u32::from_le_bytes(frame[..4].try_into().unwrap());
         assert!(!hub.raw("session:mid", 1, 1, &[0; 4], 100.0));
-        hub.ack("session:mid", id.wrapping_add(1));
+        hub.ack("session:mid", "old", id.wrapping_add(1));
         assert!(!hub.raw("session:mid", 1, 1, &[0; 4], 100.0));
-        hub.ack("session:mid", id);
+        hub.ack("session:mid", "old", id);
         assert!(hub.raw("session:mid", 1, 1, &[0; 4], 100.0));
-        hub.subscribe("session:mid".into(), channel).unwrap();
+        hub.subscribe("session:mid".into(), "new".into(), channel)
+            .unwrap();
         assert!(!hub.frame("session:mid", Some(generation), (1, 1), &[0; 4], 100.0, 0));
+        assert!(hub.raw("session:mid", 1, 1, &[0; 4], 100.0));
+        hub.ack("session:mid", "old", 1);
+        hub.unsubscribe("session:mid", "old");
+        assert!(!hub.raw("session:mid", 1, 1, &[0; 4], 100.0));
+        hub.ack("session:mid", "new", 1);
+        assert!(hub.raw("session:mid", 1, 1, &[0; 4], 100.0));
+        hub.unsubscribe("session:mid", "new");
+        assert!(!hub.raw("session:mid", 1, 1, &[0; 4], 100.0));
         hub.clear_session("session");
         assert!(!hub.raw("session:mid", 1, 1, &[0; 4], 100.0));
     }
@@ -562,6 +585,7 @@ mod tests {
             let (tx, rx) = mpsc::channel();
             hub.subscribe(
                 "session:v".into(),
+                "test".into(),
                 Channel::new(move |body| {
                     let _ = tx.send(body);
                     Ok(())

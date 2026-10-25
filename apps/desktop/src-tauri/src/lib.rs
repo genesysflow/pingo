@@ -264,24 +264,36 @@ fn video_subscribe(
     hub: tauri::State<'_, std::sync::Arc<video::VideoHub>>,
     session_id: String,
     mid: String,
+    subscription_id: String,
     channel: tauri::ipc::Channel<tauri::ipc::Response>,
 ) -> Result<(), String> {
-    if !manager.is_active(&session_id) || mid.is_empty() || mid.len() > 64 {
+    if !manager.is_active(&session_id)
+        || mid.is_empty()
+        || mid.len() > 64
+        || subscription_id.is_empty()
+        || subscription_id.len() > 128
+    {
         return Err("No matching native video call".into());
     }
-    hub.subscribe(format!("{session_id}:{mid}"), channel)
+    hub.subscribe(format!("{session_id}:{mid}"), subscription_id, channel)
 }
 #[tauri::command]
 fn video_unsubscribe(
     hub: tauri::State<'_, std::sync::Arc<video::VideoHub>>,
     session_id: String,
     mid: String,
+    subscription_id: String,
 ) {
-    hub.unsubscribe(&format!("{session_id}:{mid}"));
+    hub.unsubscribe(&format!("{session_id}:{mid}"), &subscription_id);
 }
 #[tauri::command]
-fn video_ack(hub: tauri::State<'_, std::sync::Arc<video::VideoHub>>, key: String, frame_id: u32) {
-    hub.ack(&key, frame_id);
+fn video_ack(
+    hub: tauri::State<'_, std::sync::Arc<video::VideoHub>>,
+    key: String,
+    subscription_id: String,
+    frame_id: u32,
+) {
+    hub.ack(&key, &subscription_id, frame_id);
 }
 #[tauri::command]
 fn call_video_quality(

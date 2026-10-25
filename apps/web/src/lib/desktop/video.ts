@@ -18,18 +18,21 @@ export async function drawNativeFrame(canvas: HTMLCanvasElement, buffer: ArrayBu
 }
 export function nativeVideo(sessionId: string, mid: string, canvas: HTMLCanvasElement, error: (error: unknown) => void) {
   let disposed = false, animation = 0;
+  const subscriptionId = crypto.randomUUID();
   const channel = new Channel<ArrayBuffer>();
   channel.onmessage = buffer => {
     animation = requestAnimationFrame(() => {
       if (disposed) return;
-      void drawNativeFrame(canvas, buffer).then(({ id }) => {
-        if (!disposed) return invoke('video_ack', { key: `${sessionId}:${mid}`, frameId: id });
-      }).catch(error);
+      void drawNativeFrame(canvas, buffer).catch(error).finally(() => {
+        if (!disposed && buffer.byteLength >= 4) {
+          void invoke('video_ack', { key: `${sessionId}:${mid}`, subscriptionId, frameId: new DataView(buffer).getUint32(0, true) }).catch(error);
+        }
+      });
     });
   };
-  void invoke('video_subscribe', { sessionId, mid, channel }).then(() => {
-    if (disposed) return invoke('video_unsubscribe', { sessionId, mid });
+  void invoke('video_subscribe', { sessionId, mid, subscriptionId, channel }).then(() => {
+    if (disposed) return invoke('video_unsubscribe', { sessionId, mid, subscriptionId });
     return invoke('call_video_quality', { sessionId, mid, maxHeight: Math.max(0, Math.min(2160, Math.round(canvas.getBoundingClientRect().height * devicePixelRatio))) });
   }).catch(error);
-  return () => { disposed = true; cancelAnimationFrame(animation); channel.onmessage = () => {}; void invoke('video_unsubscribe', { sessionId, mid }).catch(() => {}); };
+  return () => { disposed = true; cancelAnimationFrame(animation); channel.onmessage = () => {}; void invoke('video_unsubscribe', { sessionId, mid, subscriptionId }).catch(() => {}); };
 }
