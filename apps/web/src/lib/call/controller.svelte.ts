@@ -6,12 +6,15 @@ export interface AudioSettings {
   speaker: string;
   suppression: 'Off' | 'Gentle' | 'Strong';
   studio: boolean;
+  echoCancel?: boolean;
+  pushToTalk?: boolean;
 }
 export interface CallMedia {
   mid: string;
   user: string;
   kind: TrackKind;
-  stream: MediaStream;
+  stream: MediaStream | null;
+  native?: boolean;
 }
 export interface CallController {
   readonly userId: string;
@@ -21,6 +24,7 @@ export interface CallController {
   readonly media: CallMedia[];
   readonly localScreen: MediaStream | null;
   readonly camera: boolean;
+  attachVideo?(mid: string, canvas: HTMLCanvasElement): () => void;
   toggleCamera(): void;
   resumeAudio(): void;
   setVideoQuality(mid: string, maxHeight: number): void;

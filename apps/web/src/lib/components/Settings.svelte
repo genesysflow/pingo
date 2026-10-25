@@ -5,6 +5,9 @@
   import type { CallController } from '../call/controller.svelte';
   import Icon from './Icon.svelte';
   import Avatar from './Avatar.svelte';
+  import { nativeDesktop, serverOrigin } from '../desktop/bridge';
+  import DesktopSettings from '../desktop/DesktopSettings.svelte';
+  import NativeAudioControls from '../desktop/NativeAudioControls.svelte';
   let {
     page = 'Appearance',
     theme,
@@ -95,7 +98,7 @@
     localStorage.setItem('pingo-notify-desktop', String(desktop));
     localStorage.setItem('pingo-notify-sounds', String(sounds));
     localStorage.setItem('pingo-notify-mentions', String(mentions));
-    if (desktop && 'Notification' in window && Notification.permission === 'default') {
+    if (desktop && !nativeDesktop && 'Notification' in window && Notification.permission === 'default') {
       const permission = await Notification.requestPermission();
       if (permission !== 'granted')
         notice('Notifications are saved as a preference. Allow them in your browser to receive alerts.');
@@ -131,6 +134,7 @@
     </nav>
     <div class="settings-content">
       <h2>{tab}</h2>
+      {#if nativeDesktop && tab === 'Keyboard shortcuts'}<DesktopSettings />{/if}
       {#if tab === 'Appearance'}<p class="settings-description">
           A space that feels like yours. Easy on the eyes, easy to settle into.
         </p>
@@ -223,7 +227,7 @@
         ><button class="button primary" onclick={save}
           >Save your details<Icon name="check" size={16} /></button
         >
-      {:else if tab === 'Audio & video'}<p class="settings-description">
+      {:else if tab === 'Audio & video'}{#if nativeDesktop}<NativeAudioControls {call} />{/if}<p class="settings-description">
           Sound like yourself, wherever you are.
         </p>
         <div class="audio-summary">
@@ -332,7 +336,7 @@
           onclick={async () => {
             try {
               const code = await createInvite({ space, expiresInHours: 48 });
-              invite = `${location.origin}/invite/${code}`;
+              invite = `${serverOrigin()}/invite/${code}`;
             } catch (e) {
               error = errorMessage(e);
             }

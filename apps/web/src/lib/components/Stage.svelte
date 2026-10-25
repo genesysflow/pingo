@@ -21,7 +21,7 @@
   const screen = $derived(call.media.find((m) => m.kind === 'screen'));
   const screenStream = $derived(screen?.stream ?? call.localScreen);
   const screenMid = $derived(screen?.mid ?? call.screenMid);
-  const hasShare = $derived(!!screenStream || call.sharing);
+  const hasShare = $derived(!!screen || !!screenStream || call.sharing);
   const seconds = $derived(Math.max(0, Math.floor((call.clock - call.startedAt) / 1000)));
   function position(e: PointerEvent): [number, number] {
     const r = share.getBoundingClientRect();
@@ -150,7 +150,7 @@
           });
       }}
     >
-      {#if screenStream}{#key screenStream}<CallVideo
+      {#if screenStream || screen?.native}{#key screen?.mid ?? screenStream}<CallVideo
             stream={screenStream}
             mid={screen?.mid}
             {call}

@@ -3,6 +3,8 @@
   import type { CallController, AudioSettings } from '../call/controller.svelte';
   import Icon from './Icon.svelte';
   import Modal from './Modal.svelte';
+  import { nativeDesktop } from '../desktop/bridge';
+  import NativeSoundCheck from '../desktop/NativeSoundCheck.svelte';
   let { call, close, complete }: { call: CallController; close: () => void; complete: () => void } = $props();
   let step = $state(0),
     devices = $state<MediaDeviceInfo[]>([]),
@@ -119,6 +121,7 @@
     complete();
   }
   onMount(() => {
+    if (nativeDesktop) return;
     void enumerate();
     navigator.mediaDevices?.addEventListener('devicechange', enumerate);
   });
@@ -135,6 +138,7 @@
   });
 </script>
 
+{#if nativeDesktop}<NativeSoundCheck {call} {close} {complete} />{:else}
 <Modal title="Let’s find your good sound." {close}>
   <div class="wizard-progress">
     {#each ['Your devices', 'Your voice', 'Your sound'] as label, i}<button
@@ -242,3 +246,5 @@
     >
   </div>
 </Modal>
+
+{/if}

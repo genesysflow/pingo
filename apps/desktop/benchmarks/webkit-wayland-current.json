@@ -1,0 +1,160 @@
+{
+  "avc1.42E01F": {
+    "config": {
+      "codec": "avc1.42E01F",
+      "codedHeight": 1080,
+      "codedWidth": 1920,
+      "hardwareAcceleration": "no-preference"
+    },
+    "decodedFrames": 0,
+    "encodedBytesReceived": 94774,
+    "errors": [],
+    "supported": false
+  },
+  "samples": [
+    {
+      "callbacks": 0,
+      "cpuClockTicksPerSecond": 100,
+      "cpuPercentOneCore": 23.55199266967438,
+      "displayed": 0,
+      "dropped": 149,
+      "errors": [],
+      "fps": 30,
+      "frames": 150,
+      "mode": "h264",
+      "received": 1,
+      "seconds": 4.670517758,
+      "sent": 1,
+      "visibility": "visible"
+    },
+    {
+      "callbacks": 0,
+      "cpuClockTicksPerSecond": 100,
+      "cpuPercentOneCore": 40.28545661876428,
+      "displayed": 0,
+      "dropped": 299,
+      "errors": [],
+      "fps": 60,
+      "frames": 300,
+      "mode": "h264",
+      "received": 1,
+      "seconds": 4.641873661,
+      "sent": 1,
+      "visibility": "visible"
+    },
+    {
+      "callbacks": 0,
+      "cpuClockTicksPerSecond": 100,
+      "cpuPercentOneCore": 23.681732495888657,
+      "displayed": 0,
+      "dropped": 149,
+      "errors": [],
+      "fps": 30,
+      "frames": 150,
+      "mode": "vp8",
+      "received": 1,
+      "seconds": 4.644930434,
+      "sent": 1,
+      "visibility": "visible"
+    },
+    {
+      "callbacks": 0,
+      "cpuClockTicksPerSecond": 100,
+      "cpuPercentOneCore": 40.86798869021184,
+      "displayed": 0,
+      "dropped": 299,
+      "errors": [],
+      "fps": 60,
+      "frames": 300,
+      "mode": "vp8",
+      "received": 1,
+      "seconds": 4.624646479,
+      "sent": 1,
+      "visibility": "visible"
+    },
+    {
+      "callbacks": 0,
+      "cpuClockTicksPerSecond": 100,
+      "cpuPercentOneCore": 26.141549332902432,
+      "displayed": 0,
+      "dropped": 149,
+      "errors": [],
+      "fps": 30,
+      "frames": 150,
+      "mode": "jpeg_h264",
+      "received": 1,
+      "seconds": 4.628646851,
+      "sent": 1,
+      "visibility": "visible"
+    },
+    {
+      "callbacks": 0,
+      "cpuClockTicksPerSecond": 100,
+      "cpuPercentOneCore": 49.95374231785082,
+      "displayed": 0,
+      "dropped": 299,
+      "errors": [],
+      "fps": 60,
+      "frames": 300,
+      "mode": "jpeg_h264",
+      "received": 1,
+      "seconds": 4.644296688,
+      "sent": 1,
+      "visibility": "visible"
+    },
+    {
+      "callbacks": 0,
+      "cpuClockTicksPerSecond": 100,
+      "cpuPercentOneCore": 26.67132763512734,
+      "displayed": 0,
+      "dropped": 149,
+      "errors": [],
+      "fps": 30,
+      "frames": 150,
+      "mode": "jpeg_vp8",
+      "received": 1,
+      "seconds": 4.611693939,
+      "sent": 1,
+      "visibility": "visible"
+    },
+    {
+      "callbacks": 0,
+      "cpuClockTicksPerSecond": 100,
+      "cpuPercentOneCore": 49.90724033983967,
+      "displayed": 0,
+      "dropped": 299,
+      "errors": [],
+      "fps": 60,
+      "frames": 300,
+      "mode": "jpeg_vp8",
+      "received": 1,
+      "seconds": 4.628586923,
+      "sent": 1,
+      "visibility": "visible"
+    }
+  ],
+  "secureContext": true,
+  "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/60.5 Safari/605.1.15",
+  "vp8": {
+    "config": {
+      "codec": "vp8",
+      "codedHeight": 1080,
+      "codedWidth": 1920,
+      "hardwareAcceleration": "no-preference"
+    },
+    "decodedFrames": 0,
+    "encodedBytesReceived": 74834,
+    "errors": [],
+    "supported": false
+  },
+  "environment": {
+    "measuredAt": "2026-10-25T10:34:24.417Z",
+    "cpu": "AMD Ryzen 7 5800X3D 8-Core Processor",
+    "kernel": "7.2.8-9-omarchy",
+    "gdkBackend": "wayland",
+    "waylandDisplay": "wayland-1",
+    "disableDmabufRenderer": "0",
+    "build": "debug",
+    "webKitGTK": "2.54.1"
+  }
+}
