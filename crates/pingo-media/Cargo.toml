@@ -1,6 +1,6 @@
 [package]
 name = "pingo-media"
-description = "Native audio engine: device I/O, DSP, adaptive playout and WebRTC client"
+description = "Native media engine: audio/video capture, processing, encoding and WebRTC client"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
@@ -11,6 +11,9 @@ default = ["webrtc-apm"]
 webrtc-apm = ["dep:webrtc-audio-processing"]
 # The published deep_filter crate has DSP primitives but no inference/model loader.
 deepfilter = ["dep:deep_filter"]
+linux-capture = ["dep:ashpd", "dep:pipewire"]
+vp8 = ["dep:ffmpeg-next"]
+vaapi = ["dep:ffmpeg-next"]
 
 [dependencies]
 pingo-proto.workspace = true
@@ -30,6 +33,18 @@ nnnoiseless = { version = "0.5", default-features = false }
 opus = "0.3"
 webrtc-audio-processing = { version = "2.1", features = ["bundled"], optional = true }
 deep_filter = { version = "0.2.5", optional = true }
+openh264 = "0.9.9"
+yuvutils-rs = "0.8"
+fast_image_resize = "6.1"
+ffmpeg-next = { version = "9", default-features = false, features = ["codec", "format"], optional = true }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+ashpd = { version = "0.13", features = ["screencast"], optional = true }
+pipewire = { version = "0.10", features = ["v0_3_65"], optional = true }
 
 [dev-dependencies]
+pingo-media-test-server = { path = "tests/backend-fixture" }
+pingo-sfu.workspace = true
+axum.workspace = true
+async-trait = "0.1"
 anyhow.workspace = true

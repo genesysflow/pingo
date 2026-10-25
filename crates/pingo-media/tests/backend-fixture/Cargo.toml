@@ -1,0 +1,24 @@
+[package]
+name = "pingo-media-test-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[lib]
+path = "lib.rs"
+test = false
+doctest = false
+
+[dependencies]
+rxferrix.workspace = true
+pingo-sfu.workspace = true
+pingo-proto.workspace = true
+tokio.workspace = true
+axum.workspace = true
+tracing.workspace = true
+async-trait = "0.1"
+bitflags = "2"
+tower = { version = "0.5", features = ["util"] }
+reqwest = { version = "0.13", default-features = false, features = ["json"] }
+serde_json.workspace = true
