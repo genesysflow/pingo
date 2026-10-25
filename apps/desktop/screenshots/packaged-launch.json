@@ -1,0 +1,6 @@
+{
+  "artifact": "Pingo_0.1.0_amd64.AppImage",
+  "gdkBackend": "x11",
+  "disableDmabufRenderer": "1",
+  "text": "PINGO\nFind your people.\n\nEnter your Pingo server address. We’ll remember it on this device.\n\nServer URL\nContinue"
+}

@@ -1,9 +1,32 @@
 {
-  "packets": 46,
-  "pcmBytes": 349440,
-  "participants": [
-    " DS  Desktop Smoke (you) Volume for Desktop Smoke",
-    " NP  Native Peer Volume for Native Peer"
+  "events": [
+    {
+      "type": "connected"
+    },
+    {
+      "type": "trackPublished",
+      "track": {
+        "participantId": "948e57e6088f4703b4ad8ff4aa41accb",
+        "kind": "audio",
+        "mid": "l0j"
+      }
+    }
   ],
+  "packets": 45,
+  "pcmBytes": 334080,
+  "participants": [
+    " NP  Native Peer Volume for Native Peer",
+    " DS  Desktop Smoke (you) Volume for Desktop Smoke"
+  ],
+  "video": {
+    "width": 640,
+    "height": 360,
+    "pixel": [
+      133,
+      89,
+      204,
+      255
+    ]
+  },
   "durableParticipants": 2
 }
