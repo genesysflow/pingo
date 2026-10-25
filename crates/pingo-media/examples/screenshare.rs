@@ -95,7 +95,14 @@ async fn main() -> anyhow::Result<()> {
             .and_then(|p| std::fs::read_to_string(p).ok()),
         ..Default::default()
     };
-    tokio::time::timeout(Duration::from_secs(45), capture.start(options)).await??;
+    match tokio::time::timeout(Duration::from_secs(45), capture.start(options)).await {
+        Ok(Ok(())) => {}
+        result => {
+            // Explicitly close a pending portal request before runtime shutdown.
+            capture.stop().await?;
+            result??;
+        }
+    }
     if let Some(path) = token_file
         && let Some(token) = capture.restore_token()
     {

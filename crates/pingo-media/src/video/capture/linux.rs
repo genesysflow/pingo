@@ -142,7 +142,11 @@ impl ScreenCapturer for PortalScreen {
                 .create_session(Default::default())
                 .await
                 .map_err(capture_error)?;
+            // Keep ownership outside the start future: cancelling a picker
+            // must leave stop()/Drop able to close its portal session.
+            self.session = Some(session);
             let result = async {
+                let session = self.session.as_ref().expect("created portal session");
                 let cursor = match options.cursor {
                     CursorMode::Hidden => ashpd::desktop::screencast::CursorMode::Hidden,
                     CursorMode::Embedded => ashpd::desktop::screencast::CursorMode::Embedded,
@@ -156,7 +160,7 @@ impl ScreenCapturer for PortalScreen {
                 }
                 portal
                     .select_sources(
-                        &session,
+                        session,
                         SelectSourcesOptions::default()
                             .set_sources(Some(source.into()))
                             .set_multiple(false)
@@ -171,7 +175,7 @@ impl ScreenCapturer for PortalScreen {
                     .response()
                     .map_err(capture_error)?;
                 let response = portal
-                    .start(&session, None, Default::default())
+                    .start(session, None, Default::default())
                     .await
                     .map_err(capture_error)?
                     .response()
@@ -182,7 +186,7 @@ impl ScreenCapturer for PortalScreen {
                     .ok_or(VideoError::Capture("portal returned no stream".into()))?
                     .pipe_wire_node_id();
                 let fd = portal
-                    .open_pipe_wire_remote(&session, Default::default())
+                    .open_pipe_wire_remote(session, Default::default())
                     .await
                     .map_err(capture_error)?;
                 let worker = video_worker(Some(fd), node, options.max_fps)?;
@@ -193,11 +197,12 @@ impl ScreenCapturer for PortalScreen {
                 Ok((worker, token)) => {
                     self.worker = Some(worker);
                     self.token = token;
-                    self.session = Some(session);
                     Ok(())
                 }
                 Err(error) => {
-                    let _ = session.close().await;
+                    if let Some(session) = self.session.take() {
+                        let _ = session.close().await;
+                    }
                     Err(error)
                 }
             }
