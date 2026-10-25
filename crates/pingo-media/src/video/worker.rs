@@ -12,7 +12,7 @@ use std::{
         mpsc,
     },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 pub(crate) struct EncoderWorker {
@@ -48,16 +48,34 @@ impl EncoderWorker {
                         return;
                     }
                 };
+                let mut latest = None::<Box<CapturedFrame>>;
+                let mut captured_at = Instant::now();
+                let mut capture_time = Duration::ZERO;
                 while !stopped.load(Ordering::Relaxed) {
-                    let mut frame = match frames.recv_timeout(Duration::from_millis(20)) {
-                        Ok(frame) => frame,
-                        Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                    let mut incoming = match frames.recv_timeout(Duration::from_millis(20)) {
+                        Ok(frame) => Some(frame),
+                        Err(mpsc::RecvTimeoutError::Timeout) => None,
                         Err(_) => break,
                     };
                     while let Ok(newer) = frames.try_recv() {
-                        frame = newer;
+                        incoming = Some(newer);
                     }
                     let keymask = keys.swap(0, Ordering::Relaxed);
+                    if let Some(frame) = incoming {
+                        capture_time = frame.timestamp;
+                        captured_at = Instant::now();
+                        latest = Some(frame);
+                    } else if keymask == 0 {
+                        continue;
+                    } else if let Some(frame) = &mut latest {
+                        // Static portal sources may send no new buffers. A PLI
+                        // still needs a fresh IDR, with an advancing RTP clock.
+                        frame.timestamp = capture_time.saturating_add(captured_at.elapsed());
+                    }
+                    let Some(frame) = &latest else {
+                        keys.fetch_or(keymask, Ordering::Relaxed);
+                        continue;
+                    };
                     for (bit, rid) in [(1, "l"), (2, "m"), (4, "h")] {
                         if keymask & bit != 0 {
                             encoder.request_keyframe(Some(rid));
@@ -116,6 +134,47 @@ impl EncoderWorker {
     }
     pub fn next(&mut self) -> Option<Result<EncodedVideoFrame>> {
         self.output.try_recv().ok()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::video::{capture::synthetic::SyntheticScreen, encode::VideoMode};
+
+    fn packets(worker: &mut EncoderWorker) -> Vec<EncodedVideoFrame> {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut packets = Vec::new();
+        while packets.len() < 2 && Instant::now() < deadline {
+            if let Some(packet) = worker.next() {
+                packets.push(packet.unwrap());
+            } else {
+                thread::sleep(Duration::from_millis(5));
+            }
+        }
+        assert_eq!(packets.len(), 2, "both screen layers must be emitted");
+        packets
+    }
+
+    #[test]
+    fn pli_refreshes_a_static_screen_without_another_capture_buffer() {
+        let mut config = VideoPublishConfig::screen(320, 180, VideoMode::Text);
+        config.prefer_hardware = false;
+        let mut worker = EncoderWorker::new(config).unwrap();
+        let source = SyntheticScreen::new(320, 180, false).unwrap();
+        assert!(worker.frame(Box::new(source.frame_at(0))));
+        let first = packets(&mut worker);
+        assert!(first.iter().all(|packet| packet.keyframe));
+        worker.keyframe(Some("h"));
+        let refreshed = packets(&mut worker);
+        let high = refreshed
+            .iter()
+            .find(|p| p.rid.as_deref() == Some("h"))
+            .unwrap();
+        assert!(high.keyframe);
+        assert!(high.timestamp > first[0].timestamp);
+        let mut decoder = openh264::decoder::Decoder::new().unwrap();
+        assert!(decoder.decode(&high.data).unwrap().is_some());
     }
 }
 impl Drop for EncoderWorker {
