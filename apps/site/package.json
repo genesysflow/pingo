@@ -1,0 +1,12 @@
+{
+  "name": "@pingo/site",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun src/build.ts",
+    "dev": "bun run build && bun src/serve.ts"
+  },
+  "dependencies": {
+    "marked": "15.0.12"
+  }
+}

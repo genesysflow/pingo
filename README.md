@@ -17,6 +17,11 @@ docker compose --profile https up -d --build
 See [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) for settings, invite-only registration, email allowlists,
 networking for calls, and backups.
 
+## Presentation & docs site
+
+[apps/site](apps/site/README.md) builds the product overview and browsable documentation for GitHub Pages.
+It includes a deployment workflow and renders the existing guides directly from Markdown.
+
 ## Develop
 
 [PLAN.md](PLAN.md) has the design, [AGENTS.md](AGENTS.md) the layout and toolchain, and
