@@ -1,17 +1,25 @@
 # Meet Pingo
 
-Pingo brings chat, voice and screen sharing together for small teams and communities, on a server you run yourself.
+Pingo brings chat, voice and screen sharing together for gaming groups, friends, communities and teams, on a server you run yourself.
 
 Use it in a browser, or build the Tauri desktop app with its native Rust audio engine. The server bundles the web app, authentication, chat and media relay into one container, with an embedded SQLite database and a persistent data directory.
 
-## A space for your team
+## A space for your people
 
-Create a space, make rooms for your projects and invite your teammates. Each room has a conversation and an available call. You can join a call and keep reading other rooms without losing the call controls.
+Create a space, make rooms for your games, interests or projects and invite your people. Each room has a conversation and an available call. You can join a call and keep reading other rooms without losing the call controls.
 
 - **Keep conversations together.** Messages, threads, reactions, attachments and direct messages.
 - **Catch up on what matters.** An inbox for mentions, replies and DMs, plus search and unread state.
 - **Talk in the same room.** Voice calls with mute, deafen, device selection and a microphone sound check.
-- **Show your work.** Browser screen sharing with Text and Motion modes, optional system audio, pointers and drawing.
+- **Share the moment.** Browser screen sharing with Text and Motion modes, optional system audio, pointers and drawing.
+
+## Game nights, communities and teams
+
+- **For your gaming group.** Make rooms for the games you play, plan the next session in chat and join voice when everyone is ready. Use screen sharing to show a game or help a friend through a tricky bit. Push-to-talk and noise-suppression settings let you choose how your microphone behaves.
+- **For your community.** Give shared interests a room, keep longer conversations in threads and drop into a call to hang out. Invites, roles and permissions help you decide who belongs and what they can do.
+- **For your team.** Keep project discussions, files and feedback together. Move from a thread into a call, share a design or code, and catch up on mentions when you return.
+
+These use the same rooms, calls and sharing tools. Game capture and system audio depend on your browser, platform and selected source; see the [web client guide](../../../web/README.md#calls) for support and limits.
 
 ## Voice and Studio
 

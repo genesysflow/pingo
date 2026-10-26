@@ -1,6 +1,6 @@
 # Pingo
 
-Chat, voice and screen sharing for small teams, on a server you run yourself.
+Chat, voice and screen sharing for gaming groups, friends, communities and teams, on a server you run yourself.
 
 - Rooms, threads, reactions, DMs, an inbox for mentions and replies, search.
 - Calls with Opus at 48 kHz, DeepFilterNet3 noise suppression, and a stereo Studio mode for music.
