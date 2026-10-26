@@ -31,7 +31,11 @@ PINGO_UDP_PORT=7882 PINGO_PUBLIC_IPS=203.0.113.10 \
   must use the same family. When testing on localhost, set `PINGO_PUBLIC_IPS=127.0.0.1`.
 - Allow the selected UDP port through the host firewall and forward the same port through NAT. A reverse proxy
   must support WebSocket upgrades for `/rtc`; expose HTTPS/WSS for browser clients and forward UDP directly.
-  ICE-TCP and TURN integration remain SFU limitations, so UDP connectivity is currently required.
+  Clients can use optional TURN fallback; the relay still needs UDP connectivity to the SFU.
+- `PINGO_TURN_URLS` and `PINGO_TURN_SECRET`: enable coturn REST credentials in `voice.join`.
+  URLs are comma-separated `turn:`/`turns:` URIs. The secret must match coturn and be separate
+  from `PINGO_MEDIA_SECRET`. Credentials last one hour. Clear both values to disable TURN.
+  See `docs/SELF_HOSTING.md` for the optional sidecar, TLS and firewall configuration.
 
 The media secret is an **RxFerrix Environment variable**, read through `ctx.env`, rather than an OS environment
 lookup. Set it in the dashboard's Environment page while serving, or configure it offline with:

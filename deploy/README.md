@@ -55,3 +55,7 @@ an account allowed to read it. Repository visibility alone does not make a new G
 The site infers the image address from `GITHUB_REPOSITORY` in Actions. A local site build can set
 `SITE_REPOSITORY_URL=https://github.com/genesysflow/pingo`, or use `SITE_IMAGE=registry.example.com/pingo:VERSION`
 to distribute a different published image. The image must exist and be accessible before users can start Pingo.
+
+Optional TURN fallback uses coturn REST credentials. See [the relay setup](../docs/SELF_HOSTING.md#optional-turn-relay)
+for the `turn` Compose profile, separate secret, TLS certificates and firewall rules. With the standalone
+Compose file, also download `turn-entrypoint.sh` into the same directory. The installer writes it automatically.

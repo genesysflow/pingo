@@ -127,7 +127,10 @@ str0m ICE/DTLS/SRTP/SCTP clients for Opus and audio levels, VP8/H.264 simulcast
 quality changes and keyframe requests, data relay, replacement, hooks and token
 errors. They need neither audio devices nor external services.
 
-TODO: ICE-TCP, TURN relay deployment, publisher layer suspension (dynacast),
+TURN is provided by optional client-side coturn allocations; the SFU keeps its UDP endpoint.
+See `docs/SELF_HOSTING.md` for deployment.
+
+TODO: ICE-TCP, publisher layer suspension (dynacast),
 measured layer bitrate/resolution feedback instead of estimates when RID
 attributes are absent, and load/loss/browser interoperability testing. There is
 no transcoding, recording or E2EE. Hook delivery is currently a serial in-memory
