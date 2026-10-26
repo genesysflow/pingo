@@ -170,6 +170,8 @@ pub struct JoinRequest<'a> {
     pub origin: &'a str,
     pub url: &'a str,
     pub token: String,
+    pub ice_servers: Vec<pingo_proto::ice::IceServer>,
+    pub relay_only: bool,
     pub settings: Settings,
     pub video_sink: Option<crate::video::PacketSink>,
 }
@@ -297,6 +299,8 @@ impl CallManager {
             origin,
             url,
             token,
+            ice_servers,
+            relay_only,
             settings,
             video_sink,
         } = request;
@@ -314,6 +318,8 @@ impl CallManager {
                 Box::pin(async move {
                     let mut config = ClientConfig::new(url, token);
                     config.settings = audio.clone();
+                    config.ice_servers = ice_servers;
+                    config.relay_only = relay_only;
                     let client =
                         tokio::time::timeout(Duration::from_secs(15), Client::connect(config))
                             .await

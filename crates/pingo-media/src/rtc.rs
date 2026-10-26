@@ -1,5 +1,5 @@
-//! UDP host-candidate WebRTC client. `Session` is sans-I/O for deterministic tests;
-//! `Client` supplies WebSocket/UDP transport and a 10 ms device-worker clock.
+//! Direct UDP and TURN WebRTC client. `Session` is sans-I/O for deterministic tests;
+//! `Client` supplies signaling, transports and a 10 ms device-worker clock.
 use crate::{
     Error, Result, StereoFrame,
     audio::{
@@ -10,6 +10,7 @@ use crate::{
     pipeline::{AudioSettings, QualityReport, ReceivePipeline, SendPipeline},
 };
 use futures_util::{SinkExt, StreamExt};
+mod turn;
 mod video;
 use crate::video::{
     capture::CapturedFrame,
@@ -613,6 +614,9 @@ pub struct ClientConfig {
     pub token: String,
     pub bind: SocketAddr,
     pub settings: AudioSettings,
+    pub ice_servers: Vec<pingo_proto::ice::IceServer>,
+    /// Diagnostic mode: advertise only relay candidates to prove TURN is in use.
+    pub relay_only: bool,
 }
 impl ClientConfig {
     pub fn new(url: String, token: String) -> Self {
@@ -621,6 +625,8 @@ impl ClientConfig {
             token,
             bind: "0.0.0.0:0".parse().unwrap(),
             settings: AudioSettings::default(),
+            ice_servers: Vec::new(),
+            relay_only: false,
         }
     }
 }
@@ -673,6 +679,7 @@ pub struct Client {
     epoch: Instant,
     local_address: SocketAddr,
     routes: HashMap<SocketAddr, SocketAddr>,
+    relays: turn::Relays,
     pub events: broadcast::Sender<RtcEvent>,
 }
 impl Client {
@@ -689,8 +696,21 @@ impl Client {
         } else {
             vec![local_address]
         };
+        let relays = turn::Relays::gather(&config.ice_servers).await?;
         let epoch = Instant::now();
-        let session = Session::new(epoch, &candidates, config.settings.clone())?;
+        if config.relay_only && relays.candidates.is_empty() {
+            return Err(Error::Invalid("no TURN relay available"));
+        }
+        let mut session = Session::new(
+            epoch,
+            if config.relay_only { &[] } else { &candidates },
+            config.settings.clone(),
+        )?;
+        for (address, base) in &relays.candidates {
+            session.rtc.add_local_candidate(
+                Candidate::relayed(*address, *base, "udp").map_err(rtc_error)?,
+            );
+        }
         let sender = SendPipeline::new(config.settings.clone())?;
         let (mut websocket, _) = tokio_tungstenite::connect_async(&config.url).await?;
         websocket
@@ -711,6 +731,7 @@ impl Client {
             epoch,
             local_address,
             routes: HashMap::new(),
+            relays,
             events,
         })
     }
@@ -761,7 +782,9 @@ impl Client {
             let deadline = loop {
                 match self.session.poll_output()? {
                     Output::Transmit(tx) => {
-                        self.socket.send_to(&tx.contents, tx.destination).await?;
+                        if !self.relays.send(tx.source, tx.destination, &tx.contents) {
+                            self.socket.send_to(&tx.contents, tx.destination).await?;
+                        }
                     }
                     Output::Timeout(deadline) => break deadline,
                     Output::Event(_) => unreachable!("Session consumes events"),
@@ -831,6 +854,11 @@ impl Client {
                     } else { self.local_address };
                     if let Err(error) = self.session.receive(Instant::now(), source, destination, &buffer[..len]) {
                         tracing::debug!(%error, "discarding invalid UDP datagram");
+                    }
+                }
+                Some(packet) = self.relays.incoming.recv() => {
+                    if let Err(error) = self.session.receive(Instant::now(), packet.source, packet.destination, &packet.data) {
+                        tracing::debug!(%error, "discarding invalid relayed datagram");
                     }
                 }
                 _ = tokio::time::sleep_until(deadline.into()) => self.session.timeout(Instant::now())?,

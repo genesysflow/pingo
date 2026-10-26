@@ -150,6 +150,8 @@ async fn native_manager_receives_real_remote_audio_and_durable_participants() {
                 origin: &origin,
                 url: "/rtc",
                 token: tokens[0].clone(),
+                ice_servers: vec![],
+                relay_only: false,
                 settings: Settings::default(),
                 video_sink: None,
             },

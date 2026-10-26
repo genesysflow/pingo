@@ -332,7 +332,7 @@ export class MockBackend {
         });
         break;
       case 'voice:join':
-        result = { token: 'demo-media-token', url: '/rtc' };
+        result = { token: 'demo-media-token', url: '/rtc', iceServers: [], iceExpiresAt: null };
         break;
       default:
         throw new Error(`Unknown mock mutation: ${path}`);

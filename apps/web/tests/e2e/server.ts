@@ -9,6 +9,7 @@ const webPort = process.env.PINGO_E2E_WEB_PORT ?? '5188';
 const origin = `http://127.0.0.1:${port}`;
 const production = process.env.PINGO_E2E_PRODUCTION === '1';
 const mediaIp =
+  process.env.PINGO_E2E_MEDIA_IP ??
   Object.values(networkInterfaces())
     .flat()
     .find((i) => i && i.family === 'IPv4' && !i.internal)?.address ?? '127.0.0.1';

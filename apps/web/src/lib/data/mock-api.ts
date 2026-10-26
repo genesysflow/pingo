@@ -87,7 +87,7 @@ export const api = {
     markAllDone: m<Empty>('inbox:markAllDone'),
   },
   voice: {
-    join: m<{ room: string }, { token: string; url: string }>('voice:join'),
+    join: m<{ room: string }, import('../call/media').Admission>('voice:join'),
     participants: q<{ room: string }, VoiceParticipant[]>('voice:participants'),
   },
 };

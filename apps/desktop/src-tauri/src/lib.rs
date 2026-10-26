@@ -183,6 +183,7 @@ fn event_sink(app: tauri::AppHandle) -> calls::EventSink {
     })
 }
 #[tauri::command]
+#[allow(clippy::too_many_arguments)] // Tauri injects app/state separately from the admission fields.
 fn call_join(
     app: tauri::AppHandle,
     state: tauri::State<'_, DesktopState>,
@@ -190,6 +191,8 @@ fn call_join(
     session_id: String,
     url: String,
     token: String,
+    ice_servers: Option<Vec<pingo_proto::ice::IceServer>>,
+    relay_only: Option<bool>,
     settings: calls::Settings,
 ) -> Result<(), String> {
     let origin = state
@@ -211,6 +214,8 @@ fn call_join(
                 origin: &origin,
                 url: &url,
                 token,
+                ice_servers: ice_servers.unwrap_or_default(),
+                relay_only: relay_only.unwrap_or(false),
                 settings,
                 video_sink: Some(std::sync::Arc::new(move |packet| {
                     hub.push(&video_session, packet)

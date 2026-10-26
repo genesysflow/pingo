@@ -3,7 +3,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { CallState, type AudioSettings } from './controller.svelte';
 import type { AudioProfile } from '../data/types';
 import type { DataMsg, ParticipantInfo, TrackInfo } from '../proto';
-import { ReconnectPolicy } from './media';
+import { ReconnectPolicy, iceRenewalDelay, type Admission } from './media';
 import { nativeVideo } from '../desktop/video';
 
 export interface NativeSettings extends AudioSettings {
@@ -34,13 +34,14 @@ export class TauriCallController extends CallState {
   private ready: Promise<void>;
   private retry = new ReconnectPolicy();
   private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private renewalTimer?: ReturnType<typeof setTimeout>;
   private connectTimer?: ReturnType<typeof setTimeout>;
   private operations: Promise<unknown> = Promise.resolve();
   private profile: AudioProfile = 'voice';
   private manual: Record<string, number> = {};
   private spatial: Record<string, { volume: number; pan: number }> = {};
   constructor(
-    private admit: (room: string) => Promise<{ token: string; url: string }>,
+    private admit: (room: string) => Promise<Admission>,
     private describe: (room: string) => Promise<{ audioProfile: AudioProfile }>,
     private identity: () => string,
   ) {
@@ -78,8 +79,10 @@ export class TauriCallController extends CallState {
     this.profile = details.audioProfile;
     this.participants = []; this.media = []; this.receivedPackets = 0;
     this.sessionId = crypto.randomUUID();
-    await this.command('call_join', { sessionId: this.sessionId, ...admission, settings: this.settings() });
+    await this.command('call_join', { sessionId: this.sessionId, ...admission, iceServers: admission.iceServers ?? [], relayOnly: localStorage.getItem('pingo-relay-only') === 'true', settings: this.settings() });
     if (generation !== this.generation) return;
+    const renewIn = iceRenewalDelay(admission.iceExpiresAt);
+    if (renewIn !== null) this.renewalTimer = setTimeout(() => this.reconnect('Refreshing relay credentials…'), renewIn);
     clearTimeout(this.connectTimer);
     if (this.connection !== 'connected') this.connectTimer = setTimeout(() => this.reconnect('Native call connection timed out.'), 15000);
   }
@@ -152,6 +155,7 @@ export class TauriCallController extends CallState {
     }, delay);
   }
   private stopNative() {
+    clearTimeout(this.renewalTimer);
     clearTimeout(this.connectTimer);
     if (this.sessionId) void this.command('call_leave', { sessionId: this.sessionId }).catch(() => {});
     this.sessionId = '';

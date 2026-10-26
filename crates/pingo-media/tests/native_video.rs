@@ -32,12 +32,26 @@ struct Native {
 }
 impl Native {
     async fn join(url: &str, token: String) -> Self {
-        let client = Client::connect(ClientConfig {
-            settings: AudioSettings::default(),
-            ..ClientConfig::new(url.into(), token)
-        })
-        .await
-        .unwrap();
+        let mut config = ClientConfig::new(url.into(), token);
+        config.settings = AudioSettings::default();
+        if let Ok(url) = std::env::var("PINGO_TEST_TURN_URL") {
+            let secret = std::env::var("PINGO_TEST_TURN_SECRET").unwrap();
+            let expiry = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs()
+                + 3600;
+            let username = format!("{expiry}:native-video");
+            let credential = pingo_proto::ice::turn_password(&username, secret.as_bytes());
+            config.ice_servers = vec![pingo_proto::ice::IceServer {
+                urls: vec![url],
+                username,
+                credential,
+            }];
+            config.relay_only = true;
+        }
+        let relay_only = config.relay_only;
+        let client = Client::connect(config).await.unwrap();
         let events = client.events.subscribe();
         let (commands, rx) = mpsc::channel(32);
         let (playback_tx, playback) = mpsc::channel(64);
@@ -49,7 +63,13 @@ impl Native {
             playback,
         };
         native
-            .wait(|event| matches!(event, RtcEvent::Connected))
+            .wait(|event| {
+                if relay_only && let RtcEvent::Negotiated { local_sdp, .. } = event {
+                    assert!(local_sdp.contains(" typ relay"));
+                    assert!(!local_sdp.contains(" typ host"));
+                }
+                matches!(event, RtcEvent::Connected)
+            })
             .await;
         native
     }

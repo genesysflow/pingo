@@ -1,3 +1,17 @@
+import type { IceServer } from '../proto';
+
+export interface Admission {
+  token: string;
+  url: string;
+  iceServers?: IceServer[];
+  iceExpiresAt?: number | null;
+}
+
+/** Renew before REST credentials expire; zero/absent expiry keeps direct-only calls unchanged. */
+export function iceRenewalDelay(expiresAt: number | null | undefined, now = Date.now()): number | null {
+  return expiresAt == null ? null : Math.max(1000, expiresAt - now - 300_000);
+}
+
 import type { AudioProfile } from '../data/types';
 
 /** Keep Chromium's audio-level extension and codec list; change only Opus fmtp. */
@@ -89,8 +103,11 @@ export async function gatheredDescription(pc: RTCPeerConnection): Promise<string
       };
       const timeout = setTimeout(() => {
         cleanup();
-        reject(new Error('Could not gather network candidates.'));
-      }, 10_000);
+        // An unreachable TURN server must not discard usable direct candidates.
+        // Finish before the SFU's ten-second offer/answer deadline; later candidates are omitted.
+        if (/^a=candidate:/m.test(pc.localDescription?.sdp ?? '')) resolve();
+        else reject(new Error('Could not gather network candidates.'));
+      }, 6_000);
       const cleanup = () => {
         clearTimeout(timeout);
         pc.removeEventListener('icegatheringstatechange', check);

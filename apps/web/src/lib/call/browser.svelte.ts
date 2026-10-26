@@ -2,11 +2,10 @@ import { CallState } from './controller.svelte';
 import type { AudioSettings, CallController } from './controller.svelte';
 import type { AudioProfile } from '../data/types';
 import type { ClientMsg, ServerMsg, DataMsg, TrackInfo, TrackKind, ParticipantInfo } from '../proto';
-import { configureSdp, qualityLabel, ReconnectPolicy, screenConstraints, gatheredDescription } from './media';
+import { configureSdp, qualityLabel, ReconnectPolicy, screenConstraints, gatheredDescription, iceRenewalDelay, type Admission } from './media';
 import { Microphone } from './microphone';
 import { errorMessage } from '../data/errors';
 
-type Admission = { token: string; url: string };
 type AudioRoute = { source: MediaStreamAudioSourceNode; gain: GainNode; pan: StereoPannerNode };
 
 /** RxFerrix supplies admission; only the SFU owns durable participant state. */
@@ -30,6 +29,7 @@ export class BrowserCallController extends CallState implements CallController {
   private retry = new ReconnectPolicy();
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private disconnectTimer?: ReturnType<typeof setTimeout>;
+  private renewalTimer?: ReturnType<typeof setTimeout>;
   private statsTimer?: ReturnType<typeof setInterval>;
   private profile: AudioProfile = 'voice';
   screenMid = $state('');
@@ -101,7 +101,15 @@ export class BrowserCallController extends CallState implements CallController {
     }
     this.microphone = microphone;
     this.noiseEngine = microphone.engine;
-    const pc = (this.pc = new RTCPeerConnection({ bundlePolicy: 'max-bundle' }));
+    const pc = (this.pc = new RTCPeerConnection({
+      bundlePolicy: 'max-bundle',
+      iceServers: admission.iceServers ?? [],
+      iceTransportPolicy: localStorage.getItem('pingo-relay-only') === 'true' ? 'relay' : 'all',
+    }));
+    if (this.display?.getVideoTracks().some(t => t.readyState === 'live')) this.addVideo(this.display, 'screen');
+    if (this.webcam?.getVideoTracks().some(t => t.readyState === 'live')) this.addVideo(this.webcam, 'camera');
+    const renewIn = iceRenewalDelay(admission.iceExpiresAt);
+    if (renewIn !== null) this.renewalTimer = setTimeout(() => this.reconnect(generation), renewIn);
     microphone.enabled = !this.muted;
     this.published.set(
       pc.addTransceiver(microphone.track, { direction: 'sendonly', streams: [microphone.stream] }),
@@ -552,7 +560,7 @@ export class BrowserCallController extends CallState implements CallController {
   private reconnect(generation: number) {
     if (generation !== this.generation || !this.room || this.reconnectTimer) return;
     const delay = this.retry.nextDelay();
-    this.cleanup();
+    this.cleanup(delay !== null);
     if (delay === null) {
       this.connection = 'failed';
       this.error = 'Could not reconnect. Leave the call and join again.';
@@ -570,7 +578,8 @@ export class BrowserCallController extends CallState implements CallController {
       });
     }, delay);
   }
-  private cleanup() {
+  private cleanup(preserveCapture = false) {
+    clearTimeout(this.renewalTimer);
     clearInterval(this.statsTimer);
     clearTimeout(this.disconnectTimer);
     if (this.socket) {
@@ -590,8 +599,14 @@ export class BrowserCallController extends CallState implements CallController {
     this.published.clear();
     this.participants.clear();
     this.microphone?.stop();
-    for (const stream of [this.display, this.webcam]) stream?.getTracks().forEach((t) => t.stop());
-    this.microphone = this.display = this.webcam = undefined;
+    this.microphone = undefined;
+    if (!preserveCapture) {
+      for (const stream of [this.display, this.webcam]) stream?.getTracks().forEach((t) => t.stop());
+      this.display = this.webcam = undefined;
+      this.localScreen = null;
+      this.sharing = false;
+      this.camera = false;
+    }
     if (this.output) {
       this.output.pause();
       this.output.srcObject = null;
@@ -600,10 +615,7 @@ export class BrowserCallController extends CallState implements CallController {
     void this.context?.close();
     this.context = undefined;
     this.destination = undefined;
-    this.localScreen = null;
     this.media = [];
-    this.sharing = false;
-    this.camera = false;
     this.levels = {};
     this.previousPackets = { received: 0, lost: 0 };
     this.queue = Promise.resolve();

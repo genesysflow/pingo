@@ -47,3 +47,30 @@ test('reconnect has a bounded backoff and a healthy connection resets the budget
   retry.connected();
   expect(retry.nextDelay()).toBe(500);
 });
+
+test('TURN renewal is early and missing credentials leave direct calls alone', async () => {
+  const { iceRenewalDelay } = await import('../src/lib/call/media');
+  expect(iceRenewalDelay(null, 1000)).toBeNull();
+  expect(iceRenewalDelay(undefined, 1000)).toBeNull();
+  expect(iceRenewalDelay(3_601_000, 1000)).toBe(3_300_000);
+  expect(iceRenewalDelay(500, 1000)).toBe(1000);
+});
+
+test('unreachable TURN preserves gathered candidates and an empty gather fails', async () => {
+  const { gatheredDescription } = await import('../src/lib/call/media');
+  const { vi } = await import('vitest');
+  vi.useFakeTimers();
+  try {
+    const peer = Object.assign(new EventTarget(), {
+      iceGatheringState: 'gathering', signalingState: 'stable',
+      localDescription: { sdp: 'v=0\r\na=candidate:1 1 udp 1 192.0.2.10 40000 typ host\r\n' },
+    });
+    const gathered = gatheredDescription(peer as unknown as RTCPeerConnection);
+    await vi.advanceTimersByTimeAsync(7000);
+    expect(await gathered).toContain('typ host');
+    peer.localDescription.sdp = 'v=0\r\n';
+    const failed = expect(gatheredDescription(peer as unknown as RTCPeerConnection)).rejects.toThrow('Could not gather');
+    await vi.advanceTimersByTimeAsync(7000);
+    await failed;
+  } finally { vi.useRealTimers(); }
+});
