@@ -1,0 +1,37 @@
+# Standalone deployment: no source checkout or local build required.
+# Download the setup bundle from the Pingo site, copy .env.example to .env,
+# fill in your settings, then: docker compose --profile https up -d
+services:
+  pingo:
+    image: ${PINGO_IMAGE:?Set PINGO_IMAGE in .env to the published Pingo image}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      RXFERRIX_PUBLIC_URL: ${PINGO_URL:?Set PINGO_URL in .env}
+      PINGO_UDP_PORT: ${PINGO_UDP_PORT:-40000}
+    ports:
+      - "${PINGO_HTTP_PORT:-8090}:8090/tcp"
+      - "${PINGO_UDP_PORT:-40000}:${PINGO_UDP_PORT:-40000}/udp"
+    volumes:
+      - pingo-data:/data
+
+  caddy:
+    profiles: [https]
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      PINGO_DOMAIN: ${PINGO_DOMAIN:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [pingo]
+
+volumes:
+  pingo-data:
+  caddy-data:
+  caddy-config:

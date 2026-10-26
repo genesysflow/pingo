@@ -53,6 +53,12 @@ export const pages = [
     group: "Reference",
     source: "crates/pingo-denoise/README.md",
   },
+  {
+    slug: "deployment",
+    title: "Container distribution",
+    group: "Reference",
+    source: "deploy/README.md",
+  },
 ];
 
 export const escape = (value: string) =>

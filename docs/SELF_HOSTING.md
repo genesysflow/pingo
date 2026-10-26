@@ -5,24 +5,42 @@ Everything it stores lives in one data directory (`/data` in the container).
 
 ## What you need
 
-- A Linux machine with Docker and Docker Compose.
+- A Linux x86-64 machine with Docker and Docker Compose. Git, Rust and Bun are not required.
 - A domain name pointing at it, for HTTPS. Browsers only allow microphones and screen sharing on `https://` pages
   (or `localhost`).
-- Two open ports: **443/tcp** (or wherever your HTTPS proxy listens) and **40000/udp** for voice and video.
+- Open **443/tcp** for HTTPS and **40000/udp** for voice and video. The included Caddy proxy also needs **80/tcp** for certificate issuance and HTTP redirects.
 - Optional: an SMTP account, for magic-link sign-in and email confirmation.
 
 ## Quick start
 
+Download **server setup** from this guide on the Pingo website and extract `pingo-setup.tar.gz` into an empty
+`pingo` directory on your server. The bundle contains the Compose file, environment template, HTTPS config
+and setup notes. It runs a prebuilt image; there is no repository to clone or source to compile.
+
+Alternatively, save the [standalone Compose file](../deploy/compose.yaml), [Caddyfile](../deploy/Caddyfile)
+and [environment template](../.env.example) into the same directory. Save the template as `.env.example`.
+
+Run these commands from that directory:
+
 ```sh
-git clone <this repository> pingo && cd pingo
 cp .env.example .env
 $EDITOR .env          # PINGO_URL, PINGO_PUBLIC_IPS, PINGO_MEDIA_SECRET, PINGO_DOMAIN
-docker compose --profile https up -d --build
+docker compose --profile https pull
+docker compose --profile https up -d
 ```
+
+The published bundle fills in `PINGO_IMAGE` with the container address. If you downloaded the files separately,
+add `PINGO_IMAGE=ghcr.io/OWNER/REPOSITORY:latest` to `.env`, replacing the owner and repository with the project's
+published container address. A locally previewed site without a repository configured also leaves this placeholder;
+replace it before starting. Generate `PINGO_MEDIA_SECRET` with `openssl rand -hex 32`.
+
+Images must be published before they can be pulled. The project's container workflow publishes Linux x86-64
+images; maintainers should make the GHCR package public for downloads without registry sign-in. See the
+[container publishing notes](../deploy/README.md#publishing-the-container).
 
 The `https` profile adds [Caddy](https://caddyserver.com), which gets a Let's Encrypt certificate for
 `PINGO_DOMAIN` and proxies to Pingo. If you already run a reverse proxy, leave the profile off
-(`docker compose up -d --build`), proxy your domain to port 8090, and set `RXFERRIX_TRUST_PROXY=true`. The proxy
+(`docker compose pull && docker compose up -d`), proxy your domain to port 8090, and set `RXFERRIX_TRUST_PROXY=true`. The proxy
 must pass WebSockets through (`/api` and `/rtc` use them); Caddy, Traefik and nginx with the usual `Upgrade`
 headers all do.
 
@@ -44,6 +62,7 @@ All settings are environment variables in `.env`.
 
 | Variable | Required | What it does |
 |---|---|---|
+| `PINGO_IMAGE` | yes, prebuilt setup | Published container image, e.g. `ghcr.io/OWNER/REPOSITORY:latest`. Use a published version tag or digest to pin upgrades. |
 | `PINGO_URL` | yes | The address people open, e.g. `https://chat.example.com`. Used for sign-in redirects and links in emails. |
 | `PINGO_PUBLIC_IPS` | yes | The public IP address(es) browsers can reach this server on, comma-separated. Calls send audio and video straight to `PINGO_PUBLIC_IPS:PINGO_UDP_PORT`. |
 | `PINGO_MEDIA_SECRET` | yes | A long random string that signs call tokens: `openssl rand -hex 32`. |
@@ -119,8 +138,13 @@ docker compose exec pingo pingo-server backup --dir /data --with-files --out /da
 docker compose cp pingo:/data/backup.tar.zst .
 
 # Upgrade:
-git pull && docker compose up -d --build
+docker compose --profile https pull
+docker compose --profile https up -d
 ```
+
+Omit `--profile https` if you use your own reverse proxy. Change `PINGO_IMAGE` first to move between pinned
+versions, and back up before upgrading. Keep the same directory or Compose project name so Docker reuses your
+existing data volume.
 
 To restore, stop the container and run the restore against the data volume:
 
@@ -133,7 +157,22 @@ docker compose start pingo
 
 See `pingo-server --help` for scheduled backups to S3, export, import and migrations.
 
+## Build from source
+
+For development or unsupported image architectures, use a source checkout and the root `compose.yaml`:
+
+```sh
+cp .env.example .env
+$EDITOR .env
+docker compose --profile https up -d --build
+```
+
+This is the optional build path; the downloaded setup uses `deploy/compose.yaml` without a build context.
+
 ## Without Docker
+
+The manual build below also requires a source checkout, Rust, Bun and the system dependencies described in the
+repository's agent guide.
 
 ```sh
 rustup target add wasm32-unknown-unknown

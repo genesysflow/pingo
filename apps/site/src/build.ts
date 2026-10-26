@@ -1,6 +1,7 @@
 import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { Marked, Renderer } from "marked";
+import { gzipSync } from "node:zlib";
 import { escape, pages } from "./pages";
 import { templates } from "./templates";
 
@@ -26,8 +27,23 @@ if (
   );
 }
 const base = rawBase;
+const image =
+  process.env.SITE_IMAGE ||
+  (repository
+    ? `ghcr.io/${new URL(repository).pathname.slice(1).replace(/\/$/, "").toLowerCase()}:latest`
+    : "ghcr.io/OWNER/REPOSITORY:latest");
+if (!/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]*$/.test(image)) {
+  throw new Error(
+    "SITE_IMAGE must be a container image reference without whitespace.",
+  );
+}
 const view = templates(base, repository.replace(/\/$/, ""));
 const pageBySource = new Map(pages.map((p) => [p.source, p.slug]));
+const downloadBySource = new Map([
+  ["deploy/compose.yaml", "compose.yaml"],
+  ["deploy/Caddyfile", "Caddyfile"],
+  [".env.example", ".env.example"],
+]);
 
 async function emit(path: string, content: string) {
   const target = resolve(output, path);
@@ -64,6 +80,24 @@ await cp(
 await cp(
   resolve(import.meta.dir, "site.js"),
   resolve(output, "assets/site.js"),
+);
+
+// The standalone setup has no build context and works outside a checkout.
+const setup = {
+  "compose.yaml": await readFile(resolve(root, "deploy/compose.yaml"), "utf8"),
+  Caddyfile: await readFile(resolve(root, "deploy/Caddyfile"), "utf8"),
+  ".env.example": `# Prebuilt Pingo image. Pin a published version or digest to control upgrades.\nPINGO_IMAGE=${image}\n\n${(
+    await readFile(resolve(root, ".env.example"), "utf8")
+  )
+    .replace("# PINGO_DOMAIN=", "PINGO_DOMAIN=")
+    .replace("# RXFERRIX_TRUST_PROXY=true", "RXFERRIX_TRUST_PROXY=true")}`,
+  "README.md": await readFile(resolve(root, "deploy/README.md"), "utf8"),
+};
+for (const [name, content] of Object.entries(setup))
+  await emit(`downloads/${name}`, content);
+await writeFile(
+  resolve(output, "downloads/pingo-setup.tar.gz"),
+  gzipSync(await new Bun.Archive(setup).bytes()),
 );
 
 for (const [index, page] of pages.entries()) {
@@ -103,9 +137,14 @@ for (const [index, page] of pages.entries()) {
       if (source.startsWith("..") || source.includes("\\"))
         throw new Error(`Link escapes repository: ${page.source}: ${href}`);
       const slug = pageBySource.get(source);
-      target = slug ? `${base}docs/${slug}/` : `${base}sources/${source}`;
+      const download = downloadBySource.get(source);
+      target = slug
+        ? `${base}docs/${slug}/`
+        : download
+          ? `${base}downloads/${download}`
+          : `${base}sources/${source}`;
       if (hash) target += `#${hash}`;
-      if (!slug) linkedFiles.add(source);
+      if (!slug && !download) linkedFiles.add(source);
     }
     if (/^(?:javascript|data|vbscript):/i.test(target))
       throw new Error(`Unsafe link: ${target}`);

@@ -9,10 +9,17 @@ Chat, voice and screen sharing for gaming groups, friends, communities and teams
 
 ## Run it
 
+Download the server setup bundle from the website's self-hosting page and extract it into an empty directory.
+It uses a prebuilt container: no Git checkout, Rust or Bun required. From that directory:
+
 ```sh
-cp .env.example .env   # set PINGO_URL, PINGO_PUBLIC_IPS, PINGO_MEDIA_SECRET, PINGO_DOMAIN
-docker compose --profile https up -d --build
+cp .env.example .env   # set your URL, public IP, media secret and domain
+docker compose --profile https pull
+docker compose --profile https up -d
 ```
+
+The [self-hosting guide](docs/SELF_HOSTING.md#quick-start) also links the individual setup files.
+The source checkout's root Compose file remains available for building locally.
 
 See [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) for settings, invite-only registration, email allowlists,
 networking for calls, and backups.

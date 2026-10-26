@@ -1276,3 +1276,21 @@ h2 {
     color: #000;
   }
 }
+
+.setup-download {
+  padding: 20px;
+  margin: 0 0 28px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+}
+.prose .setup-download .button {
+  color: #21150e;
+  text-decoration: none;
+}
+.prose .setup-download p {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
