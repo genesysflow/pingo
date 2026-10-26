@@ -2,14 +2,8 @@ import { CallState } from './controller.svelte';
 import type { AudioSettings, CallController } from './controller.svelte';
 import type { AudioProfile } from '../data/types';
 import type { ClientMsg, ServerMsg, DataMsg, TrackInfo, TrackKind, ParticipantInfo } from '../proto';
-import {
-  configureSdp,
-  qualityLabel,
-  ReconnectPolicy,
-  microphoneConstraints,
-  screenConstraints,
-  gatheredDescription,
-} from './media';
+import { configureSdp, qualityLabel, ReconnectPolicy, screenConstraints, gatheredDescription } from './media';
+import { Microphone } from './microphone';
 import { errorMessage } from '../data/errors';
 
 type Admission = { token: string; url: string };
@@ -20,7 +14,7 @@ export class BrowserCallController extends CallState implements CallController {
   private pc?: RTCPeerConnection;
   private socket?: WebSocket;
   private channel?: RTCDataChannel;
-  private microphone?: MediaStream;
+  private microphone?: Microphone;
   private display?: MediaStream;
   private webcam?: MediaStream;
   private context?: AudioContext;
@@ -97,26 +91,22 @@ export class BrowserCallController extends CallState implements CallController {
     this.output.autoplay = true;
     this.output.srcObject = this.destination.stream;
     await this.selectSpeaker();
-    const microphone = await navigator.mediaDevices.getUserMedia({
-      audio: microphoneConstraints(
-        this.profile === 'studio' || this.audio.studio,
-        this.audio.microphone,
-        this.audio.suppression !== 'Off',
-      ),
+    const microphone = await Microphone.open({
+      ...this.audio,
+      studio: this.profile === 'studio' || this.audio.studio,
     });
     if (generation !== this.generation) {
-      microphone.getTracks().forEach((t) => t.stop());
+      microphone.stop();
       throw new Error('Call was cancelled.');
     }
     this.microphone = microphone;
+    this.noiseEngine = microphone.engine;
     const pc = (this.pc = new RTCPeerConnection({ bundlePolicy: 'max-bundle' }));
-    for (const track of this.microphone.getAudioTracks()) {
-      track.enabled = !this.muted;
-      this.published.set(
-        pc.addTransceiver(track, { direction: 'sendonly', streams: [this.microphone] }),
-        'audio',
-      );
-    }
+    microphone.enabled = !this.muted;
+    this.published.set(
+      pc.addTransceiver(microphone.track, { direction: 'sendonly', streams: [microphone.stream] }),
+      'audio',
+    );
     this.channel = pc.createDataChannel('pingo');
     this.channel.onmessage = (event) => {
       try {
@@ -340,7 +330,7 @@ export class BrowserCallController extends CallState implements CallController {
   }
   override toggleMute() {
     this.muted = !this.muted;
-    this.microphone?.getAudioTracks().forEach((t) => (t.enabled = !this.muted));
+    if (this.microphone) this.microphone.enabled = !this.muted;
     if (this.muted) this.levels[this.userId] = 0;
     this.state();
   }
@@ -520,23 +510,19 @@ export class BrowserCallController extends CallState implements CallController {
       await this.selectSpeaker();
       if (!this.pc) return;
       const generation = this.generation;
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: microphoneConstraints(
-          this.profile === 'studio' || settings.studio,
-          settings.microphone,
-          settings.suppression !== 'Off',
-        ),
-      });
+      const options = { ...settings, studio: this.profile === 'studio' || settings.studio };
+      if (this.microphone?.retune(options)) return;
+      const microphone = await Microphone.open(options);
       if (generation !== this.generation) {
-        stream.getTracks().forEach((t) => t.stop());
+        microphone.stop();
         return;
       }
-      const track = stream.getAudioTracks()[0];
-      track.enabled = !this.muted;
+      microphone.enabled = !this.muted;
       for (const [transceiver, kind] of this.published)
-        if (kind === 'audio') await transceiver.sender.replaceTrack(track);
-      this.microphone?.getTracks().forEach((t) => t.stop());
-      this.microphone = stream;
+        if (kind === 'audio') await transceiver.sender.replaceTrack(microphone.track);
+      this.microphone?.stop();
+      this.microphone = microphone;
+      this.noiseEngine = microphone.engine;
       await this.offer();
     });
   }
@@ -603,8 +589,8 @@ export class BrowserCallController extends CallState implements CallController {
     this.received.clear();
     this.published.clear();
     this.participants.clear();
-    for (const stream of [this.microphone, this.display, this.webcam])
-      stream?.getTracks().forEach((t) => t.stop());
+    this.microphone?.stop();
+    for (const stream of [this.display, this.webcam]) stream?.getTracks().forEach((t) => t.stop());
     this.microphone = this.display = this.webcam = undefined;
     if (this.output) {
       this.output.pause();
