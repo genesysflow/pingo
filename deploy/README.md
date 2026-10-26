@@ -3,7 +3,7 @@
 Run the setup script from the Pingo website on your Linux x86-64 server:
 
 ```sh
-curl -fsSL https://YOUR-PINGO-SITE/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/genesysflow/pingo/main/deploy/install.sh | bash
 ```
 
 It asks for your domain and public IP, generates the media secret, writes `.env`, `compose.yaml` and `Caddyfile`
@@ -45,7 +45,7 @@ docker compose cp pingo:/data/backup.tar.zst .
 ## Publishing the container
 
 For maintainers: `.github/workflows/container.yml` builds the root Dockerfile and publishes
-`ghcr.io/<owner>/<repository>:latest` on `main`. A `v0.1.0` tag publishes `:0.1.0`; every build also gets a
+`ghcr.io/genesysflow/pingo:latest` on `main`. A `v0.1.0` tag publishes `:0.1.0`; every build also gets a
 commit tag. The workflow currently targets `linux/amd64`.
 
 After the first successful publish, open the container package's settings on GitHub and set its visibility to
@@ -53,5 +53,5 @@ After the first successful publish, open the container package's settings on Git
 an account allowed to read it. Repository visibility alone does not make a new GHCR package public.
 
 The site infers the image address from `GITHUB_REPOSITORY` in Actions. A local site build can set
-`SITE_REPOSITORY_URL=https://github.com/OWNER/REPOSITORY`, or use `SITE_IMAGE=registry.example.com/pingo:VERSION`
+`SITE_REPOSITORY_URL=https://github.com/genesysflow/pingo`, or use `SITE_IMAGE=registry.example.com/pingo:VERSION`
 to distribute a different published image. The image must exist and be accessible before users can start Pingo.

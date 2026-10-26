@@ -3,7 +3,7 @@
 set -euo pipefail
 umask 077
 
-image=${PINGO_IMAGE:-ghcr.io/OWNER/REPOSITORY:latest}
+image=${PINGO_IMAGE:-ghcr.io/genesysflow/pingo:latest}
 install_dir=./pingo
 domain=
 public_ip=
@@ -67,9 +67,6 @@ prompt() {
 }
 [[ -n $domain ]] || domain=$(prompt 'Pingo domain (e.g. chat.example.com)' --domain)
 [[ -n $public_ip ]] || public_ip=$(prompt 'Server public IP (e.g. 203.0.113.10)' --public-ip)
-if [[ $image == *OWNER/REPOSITORY* ]]; then
-  image=$(prompt 'Published Pingo container image' --image)
-fi
 
 domain_pattern='^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$'
 [[ $domain =~ $domain_pattern ]] || die 'Use a domain name, e.g. chat.example.com, without https:// or a path.'

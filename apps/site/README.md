@@ -30,14 +30,14 @@ bun run build
 # Static output: apps/site/dist
 ```
 
-`SITE_BASE_PATH` defaults to `/` and must include leading and trailing slashes. `SITE_REPOSITORY_URL` can
-optionally add GitHub source links, e.g. `https://github.com/OWNER/pingo`. In Actions, the repository URL is
-derived from `GITHUB_REPOSITORY`. With no configured repository, navigation still works and each guide has a
-downloadable Markdown source link.
+`SITE_BASE_PATH` defaults to `/` and must include leading and trailing slashes. The repository defaults to
+`https://github.com/genesysflow/pingo`, so GitHub navigation and source links work in local builds too.
+`SITE_REPOSITORY_URL` overrides it; in Actions the repository comes from `GITHUB_REPOSITORY`. Each guide also
+has a downloadable Markdown source link.
 
 ## Publish on GitHub Pages
 
-1. Push the repository to GitHub when ready.
+1. Open [genesysflow/pingo](https://github.com/genesysflow/pingo) on GitHub.
 2. In **Settings → Pages → Build and deployment → Source**, choose **GitHub Actions**.
 3. Merge this change into `main`. Changes to the site, guides or shared visual assets trigger
    `.github/workflows/pages.yml`; you can also use **Actions → Publish presentation and docs → Run workflow**
@@ -58,9 +58,8 @@ media secret and Docker configuration, and starts Pingo and Caddy. Its source is
 The self-hosting page fills in the install command using the current site URL, including project prefixes
 and custom domains. It also includes a complete Compose example for manual setup.
 
-The default image is `ghcr.io/<owner>/<repository>:latest`, inferred from `GITHUB_REPOSITORY` or
-`SITE_REPOSITORY_URL`. Set `SITE_IMAGE` to override it. Without a repository or override, the local preview
-leaves an explicit `OWNER/REPOSITORY` placeholder; the script then asks for the image or accepts `--image`.
+The default image is `ghcr.io/genesysflow/pingo:latest`. A repository override through `GITHUB_REPOSITORY` or
+`SITE_REPOSITORY_URL` changes the inferred image address. Set `SITE_IMAGE` to select another image explicitly.
 The image must be published and readable; see [container publishing](../../deploy/README.md#publishing-the-container).
 
 The Compose file, Caddyfile and environment template remain available individually under `downloads/`.

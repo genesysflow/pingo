@@ -103,7 +103,7 @@ export function templates(base: string, repository: string) {
       .join("");
     const previous = pages[index - 1];
     const next = pages[index + 1];
-    const download = `<aside class="setup-download"><strong>Start with the setup script</strong><p>Enter your domain and public IP. The script generates your configuration and starts Pingo with Docker.</p><pre><code data-install-command data-install-path="${url("install.sh")}">curl -fsSL https://YOUR-PINGO-SITE/install.sh | bash</code></pre><a class="text-link" href="${url("install.sh")}">View setup script <span aria-hidden="true">↗</span></a><a class="text-link" href="#docker-compose">Use Docker Compose instead <span aria-hidden="true">→</span></a></aside>`;
+    const download = `<aside class="setup-download"><strong>Start with the setup script</strong><p>Enter your domain and public IP. The script generates your configuration and starts Pingo with Docker.</p><pre><code data-install-command data-install-path="${url("install.sh")}">curl -fsSL https://raw.githubusercontent.com/genesysflow/pingo/main/deploy/install.sh | bash</code></pre><a class="text-link" href="${url("install.sh")}">View setup script <span aria-hidden="true">↗</span></a><a class="text-link" href="#docker-compose">Use Docker Compose instead <span aria-hidden="true">→</span></a></aside>`;
     const docContent =
       page.slug === "self-hosting"
         ? content.replace("</h1>", `</h1>${download}`)
