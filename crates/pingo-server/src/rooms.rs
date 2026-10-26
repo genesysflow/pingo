@@ -93,13 +93,19 @@ pub async fn summaries(
 }
 #[query]
 pub async fn list(ctx: &QueryCtx, space: Id<Space>) -> Result<Vec<RoomSummary>> {
-    let user = ctx.auth.require_user()?;
+    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
     require_perm(&ctx.db, space, user, Perm::VIEW).await?;
     summaries(ctx, space, user).await
 }
 #[query]
 pub async fn get(ctx: &QueryCtx, room: Id<Room>) -> Result<RoomInfo> {
-    let (room, perms) = require_room(&ctx.db, room, ctx.auth.require_user()?, Perm::VIEW).await?;
+    let (room, perms) = require_room(
+        &ctx.db,
+        room,
+        crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?,
+        Perm::VIEW,
+    )
+    .await?;
     Ok(RoomInfo {
         room,
         my_perms: perms.bits(),
@@ -136,7 +142,7 @@ pub async fn create(
     kind: RoomKind,
     private: bool,
 ) -> Result<Id<Room>> {
-    let user = ctx.auth.require_user()?;
+    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
     require_perm(&ctx.db, space, user, Perm::MANAGE_ROOMS).await?;
     if kind == RoomKind::Dm {
         return Err(user_error("forbidden", "Use dms.open for direct messages"));
@@ -174,7 +180,13 @@ pub async fn update(
     audio_profile: Option<AudioProfile>,
     position: Option<i32>,
 ) -> Result<()> {
-    let (r, _) = require_room(&ctx.db, room, ctx.auth.require_user()?, Perm::MANAGE_ROOMS).await?;
+    let (r, _) = require_room(
+        &ctx.db,
+        room,
+        crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?,
+        Perm::MANAGE_ROOMS,
+    )
+    .await?;
     let mut patch = json!({});
     if let Some(n) = name {
         let n = valid_name(&n)?;
@@ -208,7 +220,13 @@ pub async fn update(
 }
 #[mutation]
 pub async fn remove(ctx: &MutationCtx, room: Id<Room>) -> Result<()> {
-    require_room(&ctx.db, room, ctx.auth.require_user()?, Perm::MANAGE_ROOMS).await?;
+    require_room(
+        &ctx.db,
+        room,
+        crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?,
+        Perm::MANAGE_ROOMS,
+    )
+    .await?;
     ctx.db.delete(room).await?;
     // No public function can read orphaned history. Bounded batches reclaim it asynchronously.
     ctx.scheduler
@@ -269,7 +287,7 @@ pub async fn cleanup(ctx: &MutationCtx, room: Id<Room>) -> Result<()> {
 #[mutation]
 #[allow(non_snake_case)]
 pub async fn markRead(ctx: &MutationCtx, room: Id<Room>) -> Result<()> {
-    let user = ctx.auth.require_user()?;
+    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
     require_room(&ctx.db, room, user, Perm::VIEW).await?;
     let latest = ctx
         .db

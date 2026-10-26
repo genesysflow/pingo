@@ -57,6 +57,20 @@ export type Id<T extends TableNames | keyof SystemDataModel> = GenericId<T>;
 /** A stored document of table `T`, with its system fields. */
 export type Doc<T extends TableNames | keyof SystemDataModel> = (DataModel & SystemDataModel)[T] & { _id: Id<T>; _creationTime: number };
 
+export type AccessStatus = {
+  registration: Registration,
+  /** Only certain addresses may use this server. */
+  restrictedEmails: boolean,
+  /** No space exists yet, so the first account may sign up without an invite. */
+  setup: boolean,
+  /** The caller's standing; absent when signed out. */
+  admission?: Admission,
+  /** The caller's address, so the UI can say which one needs confirming. */
+  email?: string,
+};
+
+export type Admission = "admitted" | "verifyEmail" | "emailNotAllowed" | "inviteRequired";
+
 export type Attachment = { id: Id<"_storage">, url: string, name: string, contentType: string, size: number, width?: number, height?: number, };
 
 export type AudioProfile = "voice" | "studio";
@@ -106,6 +120,8 @@ export type Preview = { spaceName: string, accent: string, memberCount: number, 
 export type ProfileView = { user: Id<"_users">, name: string, color: string, avatarUrl?: string, status: PresenceStatus, statusText: string, };
 
 export type ReactionGroup = { emoji: string, count: number, mine: boolean, };
+
+export type Registration = "open" | "invite";
 
 export type RoomInfo = { myPerms: number, } & Doc<"rooms">;
 

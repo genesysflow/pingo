@@ -102,7 +102,7 @@ pub async fn update(
     color: Option<String>,
     avatar: Option<Id<StoredFile>>,
 ) -> Result<()> {
-    let user = ctx.auth.require_user()?;
+    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
     let (old_name, old_color, old_avatar) = identity(&ctx.db, user).await?;
     let name = match name {
         Some(n) => model::valid_name(&n)?,

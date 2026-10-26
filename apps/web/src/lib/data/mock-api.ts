@@ -15,11 +15,15 @@ import type {
   RoomKind,
   AudioProfile,
   PresenceStatus,
+  AccessStatus,
 } from './types';
 const q = <A, R>(path: string) => makeFunctionReference<'query', A, R>('query', path);
 const m = <A, R = void>(path: string) => makeFunctionReference<'mutation', A, R>('mutation', path);
 type Empty = Record<string, never>;
 export const api = {
+  access: {
+    status: q<Empty, AccessStatus>('access:status'),
+  },
   profiles: {
     me: q<Empty, Profile | null>('profiles:me'),
     update: m<{ name?: string; color?: string; avatar?: string }>('profiles:update'),

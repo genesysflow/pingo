@@ -28,11 +28,21 @@ pub struct JoinResult {
 }
 // Signing and admission share the exact same missing/empty-key and dev policy.
 pub async fn media_secret(env: &rxferrix::env::Env, dev: bool) -> Result<String> {
-    match env
+    // Environment first (rotatable at run time), then the process environment (Docker).
+    let configured = env
         .get("PINGO_MEDIA_SECRET")
         .await?
-        .filter(|s| !s.is_empty())
-    {
+        .filter(|s| !s.is_empty());
+    match configured.or_else(|| {
+        static PROCESS: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+        PROCESS
+            .get_or_init(|| {
+                std::env::var("PINGO_MEDIA_SECRET")
+                    .ok()
+                    .filter(|s| !s.is_empty())
+            })
+            .clone()
+    }) {
         Some(s) => Ok(s),
         None if dev => {
             tracing::warn!(
@@ -42,7 +52,7 @@ pub async fn media_secret(env: &rxferrix::env::Env, dev: bool) -> Result<String>
         }
         None => Err(user_error(
             "forbidden",
-            "PINGO_MEDIA_SECRET is unset; configure it in Environment or with `pingo-server env set PINGO_MEDIA_SECRET`",
+            "PINGO_MEDIA_SECRET is unset; set the PINGO_MEDIA_SECRET environment variable or run `pingo-server env set PINGO_MEDIA_SECRET`",
         )),
     }
 }
@@ -64,7 +74,7 @@ pub async fn reset(ctx: &MutationCtx) -> Result<u32> {
 
 #[mutation]
 pub async fn join(ctx: &MutationCtx, room: Id<Room>) -> Result<JoinResult> {
-    let user = ctx.auth.require_user()?;
+    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
     let (_, perms) = require_room(&ctx.db, room, user, Perm::VIEW).await?;
     let secret = media_secret(&ctx.env, ctx.is_dev()).await?;
     let (name, color, _) = crate::profiles::identity(&ctx.db, user).await?;
@@ -113,7 +123,13 @@ pub async fn views(ctx: &QueryCtx, room: Id<Room>) -> Result<Vec<VoiceParticipan
 }
 #[query]
 pub async fn participants(ctx: &QueryCtx, room: Id<Room>) -> Result<Vec<VoiceParticipant>> {
-    require_room(&ctx.db, room, ctx.auth.require_user()?, Perm::VIEW).await?;
+    require_room(
+        &ctx.db,
+        room,
+        crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?,
+        Perm::VIEW,
+    )
+    .await?;
     views(ctx, room).await
 }
 #[internal_mutation]

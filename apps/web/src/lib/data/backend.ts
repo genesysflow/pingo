@@ -60,6 +60,13 @@ export class MockBackend {
   private queryRaw(path: string, a: Args = {}): unknown {
     const s = this.state;
     if (path === 'profiles:me') return this.authenticated ? s.people[0] : null;
+    if (path === 'access:status')
+      return {
+        registration: 'open',
+        restrictedEmails: false,
+        setup: false,
+        ...(this.authenticated ? { admission: 'admitted', email: 'alex@fieldwork.design' } : {}),
+      };
     if (path === 'invites:preview')
       return str(a, 'code') && str(a, 'code') !== 'expired'
         ? { spaceName: s.spaces[0].name, accent: s.spaces[0].accent, memberCount: 8 }

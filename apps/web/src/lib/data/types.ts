@@ -1,6 +1,15 @@
 export type PresenceStatus = 'online' | 'idle' | 'dnd' | 'offline';
 export type RoomKind = 'chat' | 'lounge' | 'stage' | 'dm';
 export type AudioProfile = 'voice' | 'studio';
+export type Registration = 'open' | 'invite';
+export type Admission = 'admitted' | 'verifyEmail' | 'emailNotAllowed' | 'inviteRequired';
+export interface AccessStatus {
+  registration: Registration;
+  restrictedEmails: boolean;
+  setup: boolean;
+  admission?: Admission;
+  email?: string;
+}
 export interface Profile {
   user: string;
   name: string;

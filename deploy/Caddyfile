@@ -1,0 +1,5 @@
+# Automatic HTTPS for Pingo. Browsers only allow microphones and screen sharing over HTTPS.
+{$PINGO_DOMAIN} {
+	encode zstd gzip
+	reverse_proxy pingo:8090
+}

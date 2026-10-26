@@ -1,0 +1,23 @@
+# Pingo
+
+Chat, voice and screen sharing for small teams, on a server you run yourself.
+
+- Rooms, threads, reactions, DMs, an inbox for mentions and replies, search.
+- Calls with Opus at 48 kHz, DeepFilterNet3 noise suppression, and a stereo Studio mode for music.
+- Screen sharing with sharp text up to 4K or smooth 1080p60, with pointers and drawing.
+- A web app and a desktop app (Tauri) with a native audio engine.
+
+## Run it
+
+```sh
+cp .env.example .env   # set PINGO_URL, PINGO_PUBLIC_IPS, PINGO_MEDIA_SECRET, PINGO_DOMAIN
+docker compose --profile https up -d --build
+```
+
+See [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) for settings, invite-only registration, email allowlists,
+networking for calls, and backups.
+
+## Develop
+
+[PLAN.md](PLAN.md) has the design, [AGENTS.md](AGENTS.md) the layout and toolchain, and
+[apps/web/README.md](apps/web/README.md) the web app.

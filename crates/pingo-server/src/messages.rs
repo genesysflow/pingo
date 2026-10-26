@@ -167,7 +167,7 @@ pub async fn list(
     room: Id<Room>,
     pagination_opts: PaginationOpts,
 ) -> Result<PaginationResult<MessageView>> {
-    let me = ctx.auth.require_user()?;
+    let me = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
     require_room(&ctx.db, room, me, Perm::VIEW).await?;
     let page = ctx
         .db
@@ -183,7 +183,7 @@ pub async fn list(
 }
 #[query]
 pub async fn thread(ctx: &QueryCtx, root: Id<Message>) -> Result<Thread> {
-    let me = ctx.auth.require_user()?;
+    let me = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
     let m = get_message(&ctx.db, root, me).await?;
     if m.thread_root.is_some() {
         return Err(user_error("not_found", "Choose the thread's root message"));
@@ -207,7 +207,7 @@ pub async fn thread(ctx: &QueryCtx, root: Id<Message>) -> Result<Thread> {
 }
 #[query]
 pub async fn search(ctx: &QueryCtx, space: Id<Space>, text: String) -> Result<Vec<MessageView>> {
-    let me = ctx.auth.require_user()?;
+    let me = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
     require_perm(&ctx.db, space, me, Perm::VIEW).await?;
     if text.trim().is_empty() {
         return Ok(vec![]);
@@ -262,7 +262,7 @@ pub async fn send(
     thread_root: Option<Id<Message>>,
     attachments: Option<Vec<Id<StoredFile>>>,
 ) -> Result<Id<Message>> {
-    let me = ctx.auth.require_user()?;
+    let me = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
     let (r, _) = require_room(&ctx.db, room, me, Perm::SEND).await?;
     let attachments = attachments.unwrap_or_default();
     let body = validate_body(&body, attachments.len())?;
@@ -410,7 +410,7 @@ async fn notify_mentions(
 }
 #[mutation]
 pub async fn edit(ctx: &MutationCtx, message: Id<Message>, body: String) -> Result<()> {
-    let me = ctx.auth.require_user()?;
+    let me = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
     let m = get_message(&ctx.db, message, me).await?;
     require_room(&ctx.db, m.room, me, Perm::SEND).await?;
     if m.author != me {
@@ -462,7 +462,7 @@ pub async fn edit(ctx: &MutationCtx, message: Id<Message>, body: String) -> Resu
 }
 #[mutation]
 pub async fn remove(ctx: &MutationCtx, message: Id<Message>) -> Result<()> {
-    let me = ctx.auth.require_user()?;
+    let me = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
     let m = get_message(&ctx.db, message, me).await?;
     if m.author != me {
         require_room(&ctx.db, m.room, me, Perm::MANAGE_MESSAGES).await?;

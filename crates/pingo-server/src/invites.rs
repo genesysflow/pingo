@@ -24,7 +24,13 @@ pub async fn create(
     max_uses: Option<u32>,
     expires_in_hours: Option<f64>,
 ) -> Result<String> {
-    require_perm(&ctx.db, space, ctx.auth.require_user()?, Perm::INVITE).await?;
+    require_perm(
+        &ctx.db,
+        space,
+        crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?,
+        Perm::INVITE,
+    )
+    .await?;
     if max_uses == Some(0)
         || expires_in_hours.is_some_and(|h| !h.is_finite() || h <= 0.0 || h > 8760.0)
     {
@@ -78,7 +84,8 @@ pub async fn preview(ctx: &QueryCtx, code: String) -> Result<Option<Preview>> {
 }
 #[mutation]
 pub async fn accept(ctx: &MutationCtx, code: String) -> Result<Id<Space>> {
-    let user = ctx.auth.require_user()?;
+    // The way into an invite-only server, so only the email rule applies here.
+    let user = crate::access::require_invitable(&ctx.auth, &ctx.env, &ctx.db).await?;
     let i = find(&ctx.db, code)
         .await?
         .filter(|i| valid(i, ctx.now()))

@@ -7,7 +7,8 @@
   let { inviteCode, enter }: { inviteCode?: string; enter: (space?: string) => void } = $props();
   const auth = useAuth(),
     preview = useQuery(api.invites.preview, () => (inviteCode ? { code: inviteCode } : 'skip')),
-    accept = useMutation(api.invites.accept);
+    accept = useMutation(api.invites.accept),
+    access = useQuery(api.access.status);
   let signup = $state(location.pathname === '/signup'),
     magic = $state(false),
     sent = $state(false),
@@ -19,6 +20,11 @@
     code = $state(''),
     mfaToken = $state('');
   let providers = $state<AuthProviders | null>(null);
+  // An invite-only server still lets people sign up, but only through an invite link.
+  const inviteOnly = $derived(
+    access.data?.registration === 'invite' && !access.data.setup && !inviteCode,
+  );
+  const canSignUp = $derived(!!providers?.signups && !inviteOnly);
   onMount(() => {
     void auth
       .providers()
@@ -153,7 +159,17 @@
               await finish();
             }}>Try the demo sign-in link</button
           >{/if}<button class="text-button" onclick={() => (sent = false)}>Use another email</button>
+      {:else if signup && (inviteOnly || providers?.signups === false)}<h2>Invite only</h2>
+        <p class="settings-description">
+          {providers?.signups === false
+            ? 'This server isn’t accepting new accounts.'
+            : 'New accounts on this server need an invite. Open the invite link you were sent to create one.'}
+        </p>
+        <button class="button primary full" onclick={() => (signup = false)}>Sign in instead</button>
       {:else}<h2>{signup ? 'Create an account' : 'Sign in'}</h2>
+        {#if signup && access.data?.restrictedEmails}<p class="settings-description">
+            Only approved email addresses can join this server.
+          </p>{/if}
         {#if inviteCode}<p class="settings-description">
             to join {preview.data?.spaceName ?? 'this space'}
           </p>{/if}
@@ -222,7 +238,7 @@
               ? 'Use a password instead'
               : 'Email me a magic link instead'}</button
           >
-        {/if}{#if providers?.signups}<p class="auth-switch">
+        {/if}{#if canSignUp}<p class="auth-switch">
             {signup ? 'Have an account?' : 'New to Pingo?'}<button onclick={() => (signup = !signup)}
               >{signup ? 'Sign in' : 'Create an account'}</button
             >
