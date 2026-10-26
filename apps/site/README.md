@@ -3,7 +3,7 @@
 A static product page and documentation site for GitHub Pages. It builds independently of the application:
 no Rust, WASM, backend or authentication is needed. Bun and `marked` are the only build requirements.
 Fonts and interface screenshots come from `apps/web`; screenshot content is an example workspace.
-The self-hosting guide includes a downloadable server setup bundle for use without a repository checkout.
+The self-hosting guide includes a one-command Docker setup script and a copy-and-paste Compose example.
 
 ## Preview locally
 
@@ -51,20 +51,22 @@ prefix. Pull requests build an artifact with a repository prefix, without publis
 GitHub Pages hosts this static presentation and documentation. The Pingo chat application requires its own
 server; follow the [self-hosting guide](../../docs/SELF_HOSTING.md).
 
-## Server setup downloads
+## Server setup script
 
-Each build creates `downloads/pingo-setup.tar.gz` with a standalone Compose file, Caddyfile, `.env.example`
-and setup README. These are also available as individual downloads. The Compose file pulls a prebuilt image;
-it has no build context or source dependencies.
+Each build publishes a self-contained `install.sh` that prompts for a domain and public IP, generates a random
+media secret and Docker configuration, and starts Pingo and Caddy. Its source is `deploy/install.sh`.
+The self-hosting page fills in the install command using the current site URL, including project prefixes
+and custom domains. It also includes a complete Compose example for manual setup.
 
 The default image is `ghcr.io/<owner>/<repository>:latest`, inferred from `GITHUB_REPOSITORY` or
 `SITE_REPOSITORY_URL`. Set `SITE_IMAGE` to override it. Without a repository or override, the local preview
-leaves an explicit `OWNER/REPOSITORY` placeholder for users to replace. The image must be published and readable;
-see [container publishing](../../deploy/README.md#publishing-the-container).
+leaves an explicit `OWNER/REPOSITORY` placeholder; the script then asks for the image or accepts `--image`.
+The image must be published and readable; see [container publishing](../../deploy/README.md#publishing-the-container).
 
-Changes to `deploy/` and `.env.example` rebuild the Pages site so the bundle stays in sync.
-Run `bun run test` to build and check the standalone archive, environment defaults and download links. The
-Pages workflow runs these checks before deployment.
+The Compose file, Caddyfile and environment template remain available individually under `downloads/`.
+Changes to `deploy/` and `.env.example` rebuild the Pages site. Run `bun run test` to verify the installer and
+site output. Installer configuration tests use Docker Compose when installed; they need no running daemon.
+The Pages workflow runs the tests before deployment.
 
 ## Maintain the content
 

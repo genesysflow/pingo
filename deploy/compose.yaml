@@ -1,6 +1,5 @@
 # Standalone deployment: no source checkout or local build required.
-# Download the setup bundle from the Pingo site, copy .env.example to .env,
-# fill in your settings, then: docker compose --profile https up -d
+# Configure .env, then: docker compose --profile https up -d
 services:
   pingo:
     image: ${PINGO_IMAGE:?Set PINGO_IMAGE in .env to the published Pingo image}

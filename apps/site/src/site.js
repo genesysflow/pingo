@@ -47,6 +47,11 @@ if (menu) {
   update();
 }
 
+for (const code of document.querySelectorAll("[data-install-command]")) {
+  const script = new URL(code.dataset.installPath, location.origin);
+  code.textContent = `curl -fsSL ${script.href} | bash\n`;
+}
+
 for (const pre of document.querySelectorAll(".prose pre")) {
   const code = pre.querySelector("code");
   if (!code || !navigator.clipboard?.writeText) continue;

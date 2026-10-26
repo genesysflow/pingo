@@ -1,7 +1,6 @@
 import { cp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { Marked, Renderer } from "marked";
-import { gzipSync } from "node:zlib";
 import { escape, pages } from "./pages";
 import { templates } from "./templates";
 
@@ -40,9 +39,10 @@ if (!/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]*$/.test(image)) {
 const view = templates(base, repository.replace(/\/$/, ""));
 const pageBySource = new Map(pages.map((p) => [p.source, p.slug]));
 const downloadBySource = new Map([
-  ["deploy/compose.yaml", "compose.yaml"],
-  ["deploy/Caddyfile", "Caddyfile"],
-  [".env.example", ".env.example"],
+  ["deploy/compose.yaml", "downloads/compose.yaml"],
+  ["deploy/Caddyfile", "downloads/Caddyfile"],
+  ["deploy/install.sh", "install.sh"],
+  [".env.example", "downloads/.env.example"],
 ]);
 
 async function emit(path: string, content: string) {
@@ -83,6 +83,10 @@ await cp(
 );
 
 // The standalone setup has no build context and works outside a checkout.
+const installer = (
+  await readFile(resolve(root, "deploy/install.sh"), "utf8")
+).replaceAll("ghcr.io/OWNER/REPOSITORY:latest", image);
+await emit("install.sh", installer);
 const setup = {
   "compose.yaml": await readFile(resolve(root, "deploy/compose.yaml"), "utf8"),
   Caddyfile: await readFile(resolve(root, "deploy/Caddyfile"), "utf8"),
@@ -95,10 +99,6 @@ const setup = {
 };
 for (const [name, content] of Object.entries(setup))
   await emit(`downloads/${name}`, content);
-await writeFile(
-  resolve(output, "downloads/pingo-setup.tar.gz"),
-  gzipSync(await new Bun.Archive(setup).bytes()),
-);
 
 for (const [index, page] of pages.entries()) {
   const toc: { id: string; text: string }[] = [];
@@ -141,7 +141,7 @@ for (const [index, page] of pages.entries()) {
       target = slug
         ? `${base}docs/${slug}/`
         : download
-          ? `${base}downloads/${download}`
+          ? `${base}${download}`
           : `${base}sources/${source}`;
       if (hash) target += `#${hash}`;
       if (!slug && !download) linkedFiles.add(source);
@@ -151,8 +151,13 @@ for (const [index, page] of pages.entries()) {
     return `<a href="${escape(target)}"${title ? ` title="${escape(title)}"` : ""}>${this.parser.parseInline(tokens)}</a>`;
   };
   const parser = new Marked({ gfm: true, renderer });
-  const markdown = await readFile(resolve(root, page.source), "utf8");
-  const html = await parser.parse(markdown);
+  const markdown = (
+    await readFile(resolve(root, page.source), "utf8")
+  ).replaceAll("ghcr.io/OWNER/REPOSITORY:latest", image);
+  const html = (await parser.parse(markdown)).replace(
+    '<code class="language-sh">curl -fsSL https://YOUR-PINGO-SITE/install.sh | bash',
+    `<code class="language-sh" data-install-command data-install-path="${base}install.sh">curl -fsSL https://YOUR-PINGO-SITE/install.sh | bash`,
+  );
   await emit(`docs/${page.slug}/index.html`, view.doc(page, html, toc, index));
   await emit(`sources/${page.source}`, markdown);
   for (const source of linkedFiles) {

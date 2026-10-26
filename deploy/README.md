@@ -1,32 +1,46 @@
 # Pingo server setup
 
-This bundle runs Pingo from a prebuilt container image. It needs Docker and Docker Compose on a Linux x86-64
-server; Git, Rust and Bun are not needed on that server.
+Run the setup script from the Pingo website on your Linux x86-64 server:
 
-1. Extract the bundle into an empty directory and run commands from there.
-2. Copy `.env.example` to `.env` and edit it. Set your URL, public IP, domain and a random media secret
-   (`openssl rand -hex 32`). The image address is filled in by the published site; if it still contains
-   `OWNER/REPOSITORY`, replace it with your published image address.
-3. Run `docker compose --profile https pull`, then `docker compose --profile https up -d`.
-4. Open your configured URL, create an account and invite your people.
+```sh
+curl -fsSL https://YOUR-PINGO-SITE/install.sh | bash
+```
 
-Point the domain's DNS at your server. For the included Caddy HTTPS proxy, allow incoming **80/tcp** and
-**443/tcp**; voice and video also need **40000/udp** (or your configured `PINGO_UDP_PORT`).
+It asks for your domain and public IP, generates the media secret, writes `.env`, `compose.yaml` and `Caddyfile`
+to `./pingo`, then pulls and starts the containers. Install Docker with its Compose plugin first. Git, Rust
+and Bun are not needed on the server. The website fills in the command's address and the published image.
 
-If you already have an HTTPS reverse proxy, omit `--profile https` and proxy it to Pingo's HTTP port
-(default `8090`). Pass WebSocket connections through and keep `RXFERRIX_TRUST_PROXY=true`.
+To run a saved script with explicit settings:
 
-Update with `docker compose --profile https pull` followed by `docker compose --profile https up -d`.
-Pin `PINGO_IMAGE` to a published version or digest if you want to control when you upgrade.
+```sh
+bash install.sh --domain chat.example.com --public-ip 203.0.113.10
+```
 
-Before upgrading, make a backup:
+Use `--dir` for a different directory, `--no-https` for your own HTTPS proxy, or `--no-start` to generate the
+configuration without starting services. Set `PINGO_IMAGE` or pass `--image` to select another image.
+Existing `.env`, Compose and Caddy files are never overwritten. Invite-only registration is enabled; the first
+account can create the first space.
+
+The site's self-hosting guide also includes a copy-and-paste `compose.yaml` for manual setup. For the full
+Caddy setup without the script, save `compose.yaml`, `Caddyfile` and `.env.example` from the site, copy the
+template to `.env`, edit it, then run `docker compose --profile https up -d`.
+
+Point the domain at your server and allow **80/tcp**, **443/tcp** and **40000/udp**. With another HTTPS proxy,
+forward it to port 8090 (including WebSockets) and omit `--profile https` when running Compose commands.
+
+From the install directory, update with:
+
+```sh
+docker compose --profile https pull
+docker compose --profile https up -d
+```
+
+Pin the image to a published version or digest to control upgrades. Back up before upgrading:
 
 ```sh
 docker compose exec pingo pingo-server backup --dir /data --with-files --out /data/backup.tar.zst
 docker compose cp pingo:/data/backup.tar.zst .
 ```
-
-Read the site's self-hosting guide for access policies, email, networking, backup restoration and other settings.
 
 ## Publishing the container
 

@@ -9,17 +9,17 @@ Chat, voice and screen sharing for gaming groups, friends, communities and teams
 
 ## Run it
 
-Download the server setup bundle from the website's self-hosting page and extract it into an empty directory.
-It uses a prebuilt container: no Git checkout, Rust or Bun required. From that directory:
+Run the setup script from the website on a server with Docker and its Compose plugin installed:
 
 ```sh
-cp .env.example .env   # set your URL, public IP, media secret and domain
-docker compose --profile https pull
-docker compose --profile https up -d
+curl -fsSL https://YOUR-PINGO-SITE/install.sh | bash
 ```
 
-The [self-hosting guide](docs/SELF_HOSTING.md#quick-start) also links the individual setup files.
-The source checkout's root Compose file remains available for building locally.
+The website shows the command with its actual address. The script asks for a domain and public IP, generates
+the configuration and starts Pingo with Docker. No repository checkout or local build is needed.
+
+Prefer manual setup? The [self-hosting guide](docs/SELF_HOSTING.md#docker-compose) has a complete
+copy-and-paste Compose example. The root Compose file is available for building from source.
 
 See [docs/SELF_HOSTING.md](docs/SELF_HOSTING.md) for settings, invite-only registration, email allowlists,
 networking for calls, and backups.

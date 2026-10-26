@@ -13,36 +13,72 @@ Everything it stores lives in one data directory (`/data` in the container).
 
 ## Quick start
 
-Download **server setup** from this guide on the Pingo website and extract `pingo-setup.tar.gz` into an empty
-`pingo` directory on your server. The bundle contains the Compose file, environment template, HTTPS config
-and setup notes. It runs a prebuilt image; there is no repository to clone or source to compile.
-
-Alternatively, save the [standalone Compose file](../deploy/compose.yaml), [Caddyfile](../deploy/Caddyfile)
-and [environment template](../.env.example) into the same directory. Save the template as `.env.example`.
-
-Run these commands from that directory:
+Install [Docker Engine with the Compose plugin](https://docs.docker.com/engine/install/) on your server first.
+Then run the setup script from the Pingo website:
 
 ```sh
-cp .env.example .env
-$EDITOR .env          # PINGO_URL, PINGO_PUBLIC_IPS, PINGO_MEDIA_SECRET, PINGO_DOMAIN
-docker compose --profile https pull
-docker compose --profile https up -d
+curl -fsSL https://YOUR-PINGO-SITE/install.sh | bash
 ```
 
-The published bundle fills in `PINGO_IMAGE` with the container address. If you downloaded the files separately,
-add `PINGO_IMAGE=ghcr.io/OWNER/REPOSITORY:latest` to `.env`, replacing the owner and repository with the project's
-published container address. A locally previewed site without a repository configured also leaves this placeholder;
-replace it before starting. Generate `PINGO_MEDIA_SECRET` with `openssl rand -hex 32`.
+The command on the website uses that site's actual address. The script asks for your domain and public IP,
+generates a random media secret, writes the configuration to `./pingo`, and starts Pingo and Caddy with Docker
+Compose. Caddy handles HTTPS. Point your domain at the server and open the ports listed above before starting.
+The first account can create the first space; everyone after that needs an invite.
 
-Images must be published before they can be pulled. The project's container workflow publishes Linux x86-64
-images; maintainers should make the GHCR package public for downloads without registry sign-in. See the
-[container publishing notes](../deploy/README.md#publishing-the-container).
+You can also [save the script](../deploy/install.sh), read it, and run it with explicit settings:
 
-The `https` profile adds [Caddy](https://caddyserver.com), which gets a Let's Encrypt certificate for
-`PINGO_DOMAIN` and proxies to Pingo. If you already run a reverse proxy, leave the profile off
-(`docker compose pull && docker compose up -d`), proxy your domain to port 8090, and set `RXFERRIX_TRUST_PROXY=true`. The proxy
-must pass WebSockets through (`/api` and `/rtc` use them); Caddy, Traefik and nginx with the usual `Upgrade`
-headers all do.
+```sh
+bash install.sh --domain chat.example.com --public-ip 203.0.113.10
+```
+
+Use `--dir /opt/pingo` to choose the install directory, `--no-https` if you already have an HTTPS reverse proxy,
+or `--no-start` to write and validate the files without starting the services. The script refuses to overwrite
+existing configuration. Run `bash install.sh --help` for all options.
+
+The script needs access to Docker and a published Pingo image. The published site sets the image address;
+for a local preview or another registry, pass `--image ghcr.io/OWNER/REPOSITORY:latest` or set `PINGO_IMAGE`.
+
+## Docker Compose
+
+If you prefer to configure Docker Compose yourself, create a `compose.yaml` with the following content.
+Replace the image address, domain and public IP with your own. Generate the media secret with
+`openssl rand -hex 32` and put it in `PINGO_MEDIA_SECRET`.
+
+```yaml
+services:
+  pingo:
+    image: ghcr.io/OWNER/REPOSITORY:latest
+    restart: unless-stopped
+    environment:
+      RXFERRIX_PUBLIC_URL: https://chat.example.com
+      PINGO_PUBLIC_IPS: 203.0.113.10
+      PINGO_MEDIA_SECRET: REPLACE_WITH_YOUR_RANDOM_SECRET
+      PINGO_REGISTRATION: invite
+      RXFERRIX_TRUST_PROXY: "true"
+    ports:
+      - "8090:8090/tcp"
+      - "40000:40000/udp"
+    volumes:
+      - pingo-data:/data
+
+volumes:
+  pingo-data:
+```
+
+Then start it:
+
+```sh
+docker compose pull
+docker compose up -d
+```
+
+This exposes Pingo on port 8090. Put your HTTPS reverse proxy in front of it, passing WebSockets through
+(`/api` and `/rtc` use them). Caddy, Traefik and nginx with the usual `Upgrade` headers all work.
+Audio and video also need direct access to UDP port 40000.
+
+For the ready-made setup with automatic HTTPS, save the [standalone Compose file](../deploy/compose.yaml),
+[Caddyfile](../deploy/Caddyfile) and [environment template](../.env.example) in one directory. Copy the template
+to `.env`, edit your settings, then run `docker compose --profile https up -d`.
 
 Open `PINGO_URL`, create an account and create your first space. Invite people from
 **Space settings & invites**.
@@ -58,7 +94,8 @@ The dashboard (`/_/`) shows data, logs and settings, and lets you change Environ
 
 ## Settings
 
-All settings are environment variables in `.env`.
+The setup script puts settings in `.env`. With the single-file Compose example, edit the service’s
+`environment` block instead. The image address is `PINGO_IMAGE` in the script setup or `image` in Compose.
 
 | Variable | Required | What it does |
 |---|---|---|
@@ -142,7 +179,8 @@ docker compose --profile https pull
 docker compose --profile https up -d
 ```
 
-Omit `--profile https` if you use your own reverse proxy. Change `PINGO_IMAGE` first to move between pinned
+Run these commands from the install directory. Omit `--profile https` if you use your own reverse proxy.
+Change `PINGO_IMAGE` (or `image` in your Compose file) first to move between pinned
 versions, and back up before upgrading. Keep the same directory or Compose project name so Docker reuses your
 existing data volume.
 
@@ -167,7 +205,7 @@ $EDITOR .env
 docker compose --profile https up -d --build
 ```
 
-This is the optional build path; the downloaded setup uses `deploy/compose.yaml` without a build context.
+This is the optional build path; the setup script and standalone Compose file use a prebuilt image without a build context.
 
 ## Without Docker
 
