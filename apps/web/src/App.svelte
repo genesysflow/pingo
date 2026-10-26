@@ -24,6 +24,7 @@
   import SoundCheck from './lib/components/SoundCheck.svelte';
   import Settings from './lib/components/Settings.svelte';
   import Auth from './lib/components/Auth.svelte';
+  import AccessGate from './lib/components/AccessGate.svelte';
   import RoomSettings from './lib/components/RoomSettings.svelte';
   import Modal from './lib/components/Modal.svelte';
   import { nativeDesktop } from './lib/desktop/bridge';
@@ -64,13 +65,16 @@
     presenceStatus = $state<PresenceStatus>('online');
   let pendingCall: RoomSummary | null = null,
     toastTimer: ReturnType<typeof setTimeout>;
-  const spaces = useQuery(api.spaces.list, () => (auth.isAuthenticated ? {} : 'skip')),
-    rooms = useQuery(api.rooms.list, () => (auth.isAuthenticated && space ? { space } : 'skip')),
+  // The server's registration policy can keep a signed-in account out until it is invited or verified.
+  const access = useQuery(api.access.status);
+  const admitted = $derived(auth.isAuthenticated && access.data?.admission === 'admitted');
+  const spaces = useQuery(api.spaces.list, () => (admitted ? {} : 'skip')),
+    rooms = useQuery(api.rooms.list, () => (admitted && space ? { space } : 'skip')),
     me = useQuery(api.profiles.me),
-    dms = useQuery(api.dms.list, () => (auth.isAuthenticated ? {} : 'skip')),
-    inboxCount = useQuery(api.inbox.count, () => (auth.isAuthenticated ? {} : 'skip'));
+    dms = useQuery(api.dms.list, () => (admitted ? {} : 'skip')),
+    inboxCount = useQuery(api.inbox.count, () => (admitted ? {} : 'skip'));
   const roomInfo = useQuery(api.rooms.get, () =>
-    auth.isAuthenticated && roomId ? { room: roomId } : 'skip',
+    admitted && roomId ? { room: roomId } : 'skip',
   );
   const callInfo = useQuery(api.rooms.get, () => (call.room ? { room: call.room } : 'skip'));
   const currentRoom = $derived({
@@ -136,7 +140,7 @@
   }
   // Live queries arrive asynchronously; wait for each selected space's actual room list.
   $effect(() => {
-    if (!auth.isAuthenticated || !spaces.data) return;
+    if (!admitted || !spaces.data) return;
     if (!spaces.data.some((s) => s._id === space)) {
       space = spaces.data[0]?._id ?? '';
       roomId = '';
@@ -144,7 +148,7 @@
     if (space && !roomId && rooms.data?.length) navigate(rooms.data[0]._id);
   });
   $effect(() => {
-    if (auth.isAuthenticated) void heartbeat().catch((e) => notice(errorMessage(e)));
+    if (admitted) void heartbeat().catch((e) => notice(errorMessage(e)));
   });
 
   function catchUp() {
@@ -288,7 +292,7 @@
       .catch((e) => notice(errorMessage(e)));
     const stop = startActivity();
     const interval = setInterval(() => {
-      if (auth.isAuthenticated) void heartbeat().catch((e) => notice(errorMessage(e)));
+      if (admitted) void heartbeat().catch((e) => notice(errorMessage(e)));
     }, 60_000);
     return () => {
       stop();
@@ -360,7 +364,14 @@
         }
       }}
     />
-  {:else if spaces.isLoading}<main class="empty-state" aria-busy="true">Loading…</main>
+  {:else if access.error}<main class="empty-state">
+      <p role="alert">{errorMessage(access.error)}</p>
+      <button class="button" onclick={() => auth.signOut()}>Sign out</button>
+    </main>
+  {:else if !access.data?.admission || (admitted && spaces.isLoading)}<main class="empty-state" aria-busy="true"
+      >Loading…</main
+    >
+  {:else if !admitted}<AccessGate status={access.data} joined={(s) => selectSpace(s)} />
   {:else if spaces.error}<main class="empty-state">
       <p role="alert">{errorMessage(spaces.error)}</p>
       <button class="button" onclick={() => auth.signOut()}>Sign out</button>
@@ -711,7 +722,7 @@
         {notice}
       />{/if}
   {/if}
-  {#if palette && auth.isAuthenticated}<Palette
+  {#if palette && admitted}<Palette
       {space}
       rooms={rooms.data ?? []}
       spaces={spaces.data ?? []}

@@ -25,7 +25,7 @@ pub async fn clear(db: &MutationDb, room: Id<Room>, user: Id<User>) -> Result<()
 }
 #[mutation]
 pub async fn start(ctx: &MutationCtx, room: Id<Room>) -> Result<()> {
-    let user = ctx.auth.require_user()?;
+    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
     require_room(&ctx.db, room, user, Perm::SEND).await?;
     let expires_at = ctx.now() + 4000.0;
     match of(&ctx.db, room, user).await? {
@@ -50,7 +50,7 @@ pub async fn start(ctx: &MutationCtx, room: Id<Room>) -> Result<()> {
 }
 #[query]
 pub async fn list(ctx: &QueryCtx, room: Id<Room>) -> Result<Vec<TypingUser>> {
-    let me = ctx.auth.require_user()?;
+    let me = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
     require_room(&ctx.db, room, me, Perm::VIEW).await?;
     let rows = ctx
         .db

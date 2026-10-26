@@ -4,6 +4,8 @@
 // Clippy --all-targets also compiles a test target despite lib.test = false.
 #![cfg(not(test))]
 
+#[path = "../../../pingo-server/src/access.rs"]
+pub mod access;
 #[path = "../../../pingo-server/src/dms.rs"]
 pub mod dms;
 #[path = "../../../pingo-server/src/files.rs"]

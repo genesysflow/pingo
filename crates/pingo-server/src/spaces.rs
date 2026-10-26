@@ -30,7 +30,7 @@ pub struct SpaceInfo {
 }
 #[query]
 pub async fn list(ctx: &QueryCtx) -> Result<Vec<SpaceSummary>> {
-    let user = ctx.auth.require_user()?;
+    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
     let memberships = ctx
         .db
         .query::<SpaceMember>()
@@ -64,7 +64,7 @@ pub async fn list(ctx: &QueryCtx) -> Result<Vec<SpaceSummary>> {
 }
 #[query]
 pub async fn get(ctx: &QueryCtx, space: Id<Space>) -> Result<SpaceInfo> {
-    let user = ctx.auth.require_user()?;
+    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
     let my_perms = require_perm(&ctx.db, space, user, Perm::VIEW).await?.bits();
     let space_doc = ctx
         .db
@@ -92,7 +92,7 @@ pub async fn get(ctx: &QueryCtx, space: Id<Space>) -> Result<SpaceInfo> {
 }
 #[mutation]
 pub async fn create(ctx: &MutationCtx, name: String, accent: Option<String>) -> Result<Id<Space>> {
-    let user = ctx.auth.require_user()?;
+    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
     create_for(ctx, user, name, accent).await
 }
 pub async fn create_for(
@@ -175,7 +175,13 @@ pub async fn update(
     accent: Option<String>,
     icon: Option<Id<StoredFile>>,
 ) -> Result<()> {
-    require_perm(&ctx.db, space, ctx.auth.require_user()?, Perm::MANAGE_SPACE).await?;
+    require_perm(
+        &ctx.db,
+        space,
+        crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?,
+        Perm::MANAGE_SPACE,
+    )
+    .await?;
     let mut patch = json!({});
     if let Some(n) = name {
         patch["name"] = json!(valid_name(&n)?);
@@ -203,7 +209,13 @@ pub async fn update(
 }
 #[query]
 pub async fn members(ctx: &QueryCtx, space: Id<Space>) -> Result<Vec<profiles::Member>> {
-    require_perm(&ctx.db, space, ctx.auth.require_user()?, Perm::VIEW).await?;
+    require_perm(
+        &ctx.db,
+        space,
+        crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?,
+        Perm::VIEW,
+    )
+    .await?;
     let rows = ctx
         .db
         .query::<SpaceMember>()
@@ -221,7 +233,7 @@ pub async fn members(ctx: &QueryCtx, space: Id<Space>) -> Result<Vec<profiles::M
 }
 #[mutation]
 pub async fn leave(ctx: &MutationCtx, space: Id<Space>) -> Result<()> {
-    let user = ctx.auth.require_user()?;
+    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
     let s = ctx
         .db
         .get(space)

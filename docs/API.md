@@ -6,7 +6,8 @@ camelCase (RxFerrix does that automatically). Ids are strings in TS (`Id<"rooms"
 
 If the backend needs to deviate, update this file in the same change.
 
-Every function requires a signed-in user unless noted. Authorization goes through one helper,
+Every function requires a signed-in user unless noted, and that user must be admitted by the registration policy
+(`access.rs`, see below): otherwise it fails with `invite_required`, `email_not_allowed` or `email_not_verified`. Authorization goes through one helper,
 `require_perm(ctx, space, Perm::X)`. Errors use `user_error(code, message)` with the codes listed below.
 
 ## Tables (see PLAN.md §4.1)
@@ -43,6 +44,7 @@ Member         { user, name, color, avatarUrl?, status, roles: Id[] }
 
 | Module | Function | Kind | Args | Returns |
 |---|---|---|---|---|
+| access | `status` | query | – | `{ registration: "open" \| "invite", restrictedEmails, setup, admission?, email? }` (no auth required; `admission` = `"admitted" \| "verifyEmail" \| "emailNotAllowed" \| "inviteRequired"` when signed in; `setup` = no space exists yet, so the first account may sign up) |
 | profiles | `me` | query | – | `Profile \| null` (null when signed out, no auth required) |
 | profiles | `update` | mutation | `name?, color?, avatar?: Id<"_storage">` | – |
 | spaces | `list` | query | – | `SpaceSummary[]` |
@@ -53,7 +55,7 @@ Member         { user, name, color, avatarUrl?, status, roles: Id[] }
 | spaces | `leave` | mutation | `space` | – |
 | invites | `create` | mutation | `space, maxUses?, expiresInHours?` | `string` code (INVITE) |
 | invites | `preview` | query | `code` | `{ spaceName, accent, memberCount } \| null` (no auth required) |
-| invites | `accept` | mutation | `code` | `Id<"spaces">` |
+| invites | `accept` | mutation | `code` | `Id<"spaces">` (allowed before admission: the way into an invite-only server; the email rule still applies) |
 | rooms | `list` | query | `space` | `RoomSummary[]` ordered by position |
 | rooms | `get` | query | `room` | `Room & { myPerms }` |
 | rooms | `create` | mutation | `space, name, topic?, kind, private` | `Id<"rooms">` (MANAGE_ROOMS) |
@@ -83,6 +85,16 @@ Member         { user, name, color, avatarUrl?, status, roles: Id[] }
 | voice | `setState` | internal mutation | `room, user, muted, deafened, sharingScreen, video` | – (called by the SFU only; upserts `voice_states`) |
 | voice | `left` | internal mutation | `room, user` | – (called by the SFU only) |
 
-Error codes: `not_found`, `forbidden`, `invalid_name`, `name_taken`, `invalid_invite`, `rate_limited`, `too_long`.
+Error codes: `not_found`, `forbidden`, `invalid_name`, `name_taken`, `invalid_invite`, `rate_limited`, `too_long`,
+`invite_required`, `email_not_allowed`, `email_not_verified`, `misconfigured` (an invalid registration setting).
+
+## Registration policy
+
+Read from RxFerrix Environment (dashboard or `pingo-server env set`), falling back to the process environment:
+
+- `PINGO_REGISTRATION` = `open` (default) or `invite`. With `invite`, a user is admitted once they belong to a
+  space; until the first space exists, any account is admitted so it can create one.
+- `PINGO_ALLOWED_EMAILS`: addresses and domains (`ada@example.com, @example.com`). When set, the account's email
+  must match and be verified, invites included.
 
 Limits: message body ≤ 4000 chars, room/space name 1–32 chars, ≤ 10 attachments, 20 reactions per message.

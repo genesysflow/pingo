@@ -1062,3 +1062,197 @@ async fn sends_are_rate_limited_and_window_resets() {
     f.t.advance_time(Duration::from_secs(61)).await.unwrap();
     send(&f, f.ann, "new minute").await;
 }
+
+async fn set_env(t: &TestApp, name: &str, value: Option<&str>) {
+    t.mutation::<rxferrix::env::put>((name.to_owned(), value.map(str::to_owned)))
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn invite_only_admits_members_and_invitees_only() {
+    let f = fixture().await;
+    set_env(&f.t, crate::access::REGISTRATION, Some("invite")).await;
+    // Existing members keep working when a server switches to invite-only.
+    send(&f, f.ann, "still here").await;
+    let status =
+        f.t.as_user(f.eve)
+            .query::<crate::access::status>(())
+            .await
+            .unwrap();
+    assert_eq!(
+        status.admission,
+        Some(crate::access::Admission::InviteRequired)
+    );
+    for err in [
+        f.t.as_user(f.eve)
+            .mutation::<spaces::create>(("Mine".into(), None))
+            .await
+            .unwrap_err(),
+        f.t.as_user(f.eve)
+            .query::<spaces::list>(())
+            .await
+            .unwrap_err(),
+        f.t.as_user(f.eve)
+            .mutation::<presence::heartbeat>(())
+            .await
+            .unwrap_err(),
+    ] {
+        assert_eq!(code(err), "invite_required");
+    }
+    let invite =
+        f.t.as_user(f.ann)
+            .mutation::<invites::create>((f.space, None, None))
+            .await
+            .unwrap();
+    f.t.as_user(f.eve)
+        .mutation::<invites::accept>((invite,))
+        .await
+        .unwrap();
+    assert_eq!(
+        f.t.as_user(f.eve)
+            .query::<spaces::list>(())
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+    // Leaving every space closes the door again.
+    f.t.as_user(f.eve)
+        .mutation::<spaces::leave>((f.space,))
+        .await
+        .unwrap();
+    assert_eq!(
+        code(
+            f.t.as_user(f.eve)
+                .query::<spaces::list>(())
+                .await
+                .unwrap_err()
+        ),
+        "invite_required"
+    );
+    set_env(&f.t, crate::access::REGISTRATION, Some("open")).await;
+    f.t.as_user(f.eve).query::<spaces::list>(()).await.unwrap();
+}
+
+#[tokio::test]
+async fn invite_only_lets_the_first_account_create_the_first_space() {
+    let t = TestApp::new().await.unwrap();
+    set_env(&t, crate::access::REGISTRATION, Some("invite")).await;
+    assert!(t.query::<crate::access::status>(()).await.unwrap().setup);
+    let first = user(&t, "First").await;
+    t.as_user(first)
+        .mutation::<spaces::create>(("Home".into(), None))
+        .await
+        .unwrap();
+    assert!(!t.query::<crate::access::status>(()).await.unwrap().setup);
+    let second = t.create_user("second@example.com", None).await.unwrap();
+    assert_eq!(
+        code(
+            t.as_user(second)
+                .mutation::<spaces::create>(("Squat".into(), None))
+                .await
+                .unwrap_err()
+        ),
+        "invite_required"
+    );
+}
+
+#[tokio::test]
+async fn email_allowlist_needs_a_listed_and_verified_address() {
+    let t = TestApp::with_auth(rxferrix::auth::AuthConfig::password())
+        .await
+        .unwrap();
+    set_env(
+        &t,
+        crate::access::ALLOWED_EMAILS,
+        Some("@acme.org, boss@example.com"),
+    )
+    .await;
+    let listed = t.create_user("ada@acme.org", None).await.unwrap();
+    let boss = t.create_user("boss@example.com", None).await.unwrap();
+    let outsider = t.create_user("eve@example.com", None).await.unwrap();
+    t.as_user(listed)
+        .mutation::<spaces::create>(("Acme".into(), None))
+        .await
+        .unwrap();
+    t.as_user(boss).query::<spaces::list>(()).await.unwrap();
+    assert_eq!(
+        code(
+            t.as_user(outsider)
+                .query::<spaces::list>(())
+                .await
+                .unwrap_err()
+        ),
+        "email_not_allowed"
+    );
+    // An invite doesn't override the email rule.
+    let space = t.as_user(listed).query::<spaces::list>(()).await.unwrap()[0].id;
+    let invite = t
+        .as_user(listed)
+        .mutation::<invites::create>((space, None, None))
+        .await
+        .unwrap();
+    assert_eq!(
+        code(
+            t.as_user(outsider)
+                .mutation::<invites::accept>((invite,))
+                .await
+                .unwrap_err()
+        ),
+        "email_not_allowed"
+    );
+    // A password sign-up claiming a listed address must confirm it first.
+    let signed = t
+        .app()
+        .auth()
+        .sign_up(
+            t.app(),
+            "mallory@acme.org",
+            "correct-horse-battery".into(),
+            None,
+            rxferrix::auth::ClientInfo::default(),
+        )
+        .await
+        .unwrap();
+    let rxferrix::auth::service::SignUpResult::SignedIn(tokens) = signed else {
+        panic!("verification is not required by the auth config");
+    };
+    let mallory: Id<User> = tokens.user_id.unwrap().parse().unwrap();
+    let status = t
+        .as_user(mallory)
+        .query::<crate::access::status>(())
+        .await
+        .unwrap();
+    assert_eq!(
+        status.admission,
+        Some(crate::access::Admission::VerifyEmail)
+    );
+    assert!(status.restricted_emails);
+    assert_eq!(
+        code(
+            t.as_user(mallory)
+                .query::<spaces::list>(())
+                .await
+                .unwrap_err()
+        ),
+        "email_not_verified"
+    );
+}
+
+#[tokio::test]
+async fn a_bad_policy_value_closes_the_server() {
+    let f = fixture().await;
+    set_env(&f.t, crate::access::REGISTRATION, Some("everyone")).await;
+    assert_eq!(
+        code(
+            f.t.as_user(f.ann)
+                .query::<spaces::list>(())
+                .await
+                .unwrap_err()
+        ),
+        "misconfigured"
+    );
+    let status = f.t.query::<crate::access::status>(()).await.unwrap_err();
+    assert_eq!(code(status), "misconfigured");
+}
