@@ -17,7 +17,7 @@ Install [Docker](https://docs.docker.com/engine/install/) with the `docker compo
 Then run the setup script from the Pingo website:
 
 ```sh
-curl -fsSL https://YOUR-PINGO-SITE/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/genesysflow/pingo/main/deploy/install.sh | bash
 ```
 
 The command on the website uses that site's actual address. The script asks for your domain and public IP,
@@ -35,8 +35,8 @@ Use `--dir /opt/pingo` to choose the install directory, `--no-https` if you alre
 or `--no-start` to write and validate the files without starting the services. The script refuses to overwrite
 existing configuration. Run `bash install.sh --help` for all options.
 
-The script needs access to Docker and a published Pingo image. The published site sets the image address;
-for a local preview or another registry, pass `--image ghcr.io/OWNER/REPOSITORY:latest` or set `PINGO_IMAGE`.
+The script uses `ghcr.io/genesysflow/pingo:latest` by default. Pass `--image` or set `PINGO_IMAGE` to use
+a different published version or registry.
 
 ## Docker Compose
 
@@ -47,7 +47,7 @@ Replace the image address, domain and public IP with your own. Generate the medi
 ```yaml
 services:
   pingo:
-    image: ghcr.io/OWNER/REPOSITORY:latest
+    image: ghcr.io/genesysflow/pingo:latest
     restart: unless-stopped
     environment:
       RXFERRIX_PUBLIC_URL: https://chat.example.com
@@ -99,7 +99,7 @@ The setup script puts settings in `.env`. With the single-file Compose example, 
 
 | Variable | Required | What it does |
 |---|---|---|
-| `PINGO_IMAGE` | yes, prebuilt setup | Published container image, e.g. `ghcr.io/OWNER/REPOSITORY:latest`. Use a published version tag or digest to pin upgrades. |
+| `PINGO_IMAGE` | yes, prebuilt setup | Published container image, e.g. `ghcr.io/genesysflow/pingo:latest`. Use a published version tag or digest to pin upgrades. |
 | `PINGO_URL` | yes | The address people open, e.g. `https://chat.example.com`. Used for sign-in redirects and links in emails. |
 | `PINGO_PUBLIC_IPS` | yes | The public IP address(es) browsers can reach this server on, comma-separated. Calls send audio and video straight to `PINGO_PUBLIC_IPS:PINGO_UDP_PORT`. |
 | `PINGO_MEDIA_SECRET` | yes | A long random string that signs call tokens: `openssl rand -hex 32`. |

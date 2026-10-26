@@ -16,7 +16,7 @@ const repository =
   process.env.SITE_REPOSITORY_URL ||
   (process.env.GITHUB_REPOSITORY
     ? `https://github.com/${process.env.GITHUB_REPOSITORY}`
-    : "");
+    : "https://github.com/genesysflow/pingo");
 if (
   repository &&
   !/^https:\/\/github\.com\/[\w.-]+\/[\w.-]+\/?$/.test(repository)
@@ -30,7 +30,7 @@ const image =
   process.env.SITE_IMAGE ||
   (repository
     ? `ghcr.io/${new URL(repository).pathname.slice(1).replace(/\/$/, "").toLowerCase()}:latest`
-    : "ghcr.io/OWNER/REPOSITORY:latest");
+    : "ghcr.io/genesysflow/pingo:latest");
 if (!/^[a-zA-Z0-9][a-zA-Z0-9._/:@-]*$/.test(image)) {
   throw new Error(
     "SITE_IMAGE must be a container image reference without whitespace.",
@@ -85,7 +85,7 @@ await cp(
 // The standalone setup has no build context and works outside a checkout.
 const installer = (
   await readFile(resolve(root, "deploy/install.sh"), "utf8")
-).replaceAll("ghcr.io/OWNER/REPOSITORY:latest", image);
+).replaceAll("ghcr.io/genesysflow/pingo:latest", image);
 await emit("install.sh", installer);
 const setup = {
   "compose.yaml": await readFile(resolve(root, "deploy/compose.yaml"), "utf8"),
@@ -153,10 +153,10 @@ for (const [index, page] of pages.entries()) {
   const parser = new Marked({ gfm: true, renderer });
   const markdown = (
     await readFile(resolve(root, page.source), "utf8")
-  ).replaceAll("ghcr.io/OWNER/REPOSITORY:latest", image);
+  ).replaceAll("ghcr.io/genesysflow/pingo:latest", image);
   const html = (await parser.parse(markdown)).replace(
-    '<code class="language-sh">curl -fsSL https://YOUR-PINGO-SITE/install.sh | bash',
-    `<code class="language-sh" data-install-command data-install-path="${base}install.sh">curl -fsSL https://YOUR-PINGO-SITE/install.sh | bash`,
+    '<code class="language-sh">curl -fsSL https://raw.githubusercontent.com/genesysflow/pingo/main/deploy/install.sh | bash',
+    `<code class="language-sh" data-install-command data-install-path="${base}install.sh">curl -fsSL https://raw.githubusercontent.com/genesysflow/pingo/main/deploy/install.sh | bash`,
   );
   await emit(`docs/${page.slug}/index.html`, view.doc(page, html, toc, index));
   await emit(`sources/${page.source}`, markdown);

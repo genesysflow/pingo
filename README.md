@@ -12,7 +12,7 @@ Chat, voice and screen sharing for gaming groups, friends, communities and teams
 Run the setup script from the website on a server with Docker installed and the `docker compose` command available:
 
 ```sh
-curl -fsSL https://YOUR-PINGO-SITE/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/genesysflow/pingo/main/deploy/install.sh | bash
 ```
 
 The website shows the command with its actual address. The script asks for a domain and public IP, generates
