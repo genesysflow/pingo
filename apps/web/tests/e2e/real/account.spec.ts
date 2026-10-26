@@ -16,9 +16,9 @@ test('password sessions, profile, uploads, room management, search and email-cod
   expect(email).not.toBe('');
   await page.getByRole('button', { name: 'Your profile', exact: true }).click();
   await page.getByLabel('Your name', { exact: true }).fill('RobinUpdated');
-  await page.getByRole('button', { name: 'Save your details' }).click();
+  await page.getByRole('button', { name: 'Save profile' }).click();
   await expect(page.locator('.profile-preview')).toContainText('RobinUpdated');
-  await page.getByRole('button', { name: 'Back to your people' }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   await page
     .locator('input[type=file]')
     .first()
@@ -67,6 +67,6 @@ test('password sessions, profile, uploads, room management, search and email-cod
   expect(body.status).toBe('success');
   await page.getByLabel('Email code', { exact: true }).fill(body.value);
   await submitAuth(page, page.getByRole('button', { name: 'Verify email code', exact: true }), 'magic/verify');
-  await expect(page.getByRole('heading', { name: 'Make a little space.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Create your first space' })).toBeVisible();
   expect(errors).toEqual([]);
 });

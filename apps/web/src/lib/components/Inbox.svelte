@@ -1,5 +1,4 @@
 <script lang="ts">
-  import Flourish from './Flourish.svelte';
   import { api, useQuery, useMutation, errorMessage, isDemo, type InboxItem } from '../data';
   import { formatTime } from '../logic/chat';
   import Avatar from './Avatar.svelte';
@@ -46,16 +45,6 @@
 
 <svelte:window onkeydown={keydown} />
 <div class="inbox-view">
-  <div class="inbox-intro">
-    <div class="eyebrow"><span class="little-star"><Flourish /></span> A MOMENT TO RECONNECT</div>
-    <h1>A little catching up.</h1>
-    <p>
-      {count.data
-        ? `${count.data} things for you. Take them one at a time.`
-        : 'You’re all caught up. Go make something lovely.'}
-    </p>
-    <span class="inbox-doodle">✺<i>you’re<br />right on time.</i></span>
-  </div>
   <div class="inbox-filters">
     <div role="tablist" aria-label="Inbox filter">
       {#each ['All', 'Mentions', 'Replies', 'Direct messages'] as f}<button
@@ -85,15 +74,14 @@
               name={item.kind === 'mention' ? 'bell' : item.kind === 'reply' ? 'thread' : 'mail'}
               size={13}
             />{item.kind === 'mention'
-              ? 'Mentioned you'
+              ? 'Mention'
               : item.kind === 'reply'
-                ? 'Replied to your thread'
-                : 'A message for you'}</span
+                ? 'Thread reply'
+                : 'Direct message'}</span
           ><span
-            >{item.space?.name ?? 'Just the two of you'}<span class="dot-separator">·</span>{item.room
-              .kind === 'dm'
-              ? 'Direct message'
-              : `# ${item.room.name}`}<time>{formatTime(item.message._creationTime)}</time></span
+            >{item.room.kind === 'dm'
+              ? item.message.author.name
+              : `${item.space?.name ?? ''} · #${item.room.name}`}<time>{formatTime(item.message._creationTime)}</time></span
           >
         </div>
         <div class="inbox-card-body">
@@ -117,7 +105,7 @@
             id={`inbox-${i}`}
             onfocus={() => (selected = i)}
             onclick={() => jump(item)}
-            >{item.kind === 'reply' ? 'Open thread' : 'Go to conversation'}<Icon
+            >{item.kind === 'reply' ? 'Open thread' : 'Open'}<Icon
               name="arrowRight"
               size={14}
             /></button
@@ -129,21 +117,16 @@
         </div>
       </article>{/each}
     {#if !filtered.length}<div class="empty-state">
-        <span class="caught-up-flower">✺</span>
-        <h2>Room to breathe.</h2>
+        <h2>{filter === 'All' ? 'You’re all caught up' : 'Nothing here'}</h2>
         <p>
           {filter === 'All'
-            ? 'Nothing needs your attention. Enjoy the quiet.'
-            : 'Nothing here right now. A little less to think about.'}
+            ? 'Mentions, thread replies and direct messages land here.'
+            : `No ${filter.toLowerCase()} to review.`}
         </p>
-        <button class="button soft" onclick={() => open(isDemo ? 'design' : '')}
-          >Back to your people<Icon name="arrowRight" size={15} /></button
-        >
+        <button class="button" onclick={() => open(isDemo ? 'design' : '')}>Back to rooms</button>
       </div>{/if}
   </div>
   <div class="inbox-footer">
-    <Icon name="leaf" size={14} />You don’t have to be everywhere, all at once.<span
-      ><kbd>j</kbd><kbd>k</kbd> to browse · <kbd>e</kbd> to mark done</span
-    >
+    <span><kbd>j</kbd><kbd>k</kbd> move · <kbd>e</kbd> done</span>
   </div>
 </div>

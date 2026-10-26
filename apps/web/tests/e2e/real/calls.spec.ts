@@ -131,8 +131,8 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     await expect.poll(() => inbound(bob, 'audio')).toBeGreaterThan(previous);
     await alice.getByRole('button', { name: 'Raise hand', exact: true }).click();
     await expect(bob.locator('.stage-tile').filter({ hasText: 'CallAlice' })).toContainText('✋');
-    await alice.getByRole('button', { name: 'Send 💜 in call' }).click();
-    await expect(bob.locator('.floating-reaction')).toContainText('💜');
+    await alice.getByRole('button', { name: 'Send ❤️ in call' }).click();
+    await expect(bob.locator('.floating-reaction')).toContainText('❤️');
     await alice.getByRole('button', { name: 'Turn camera on', exact: true }).click();
     const camera = bob.locator('video[aria-label="CallAlice\'s camera"]');
     await expect(camera).toBeVisible();

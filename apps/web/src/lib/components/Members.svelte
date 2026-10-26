@@ -19,17 +19,16 @@
   <div class="panel-heading">
     <div>
       <Icon name="users" />
-      <h2>Your people</h2>
+      <h2>Members</h2>
     </div>
     <button class="icon-button" onclick={close} aria-label="Close members"><Icon name="close" /></button>
   </div>
   {#if error}<p class="error" role="alert">{error}</p>{/if}
-  <p class="panel-note">Good things happen with good company.</p>
   {#each ['online', 'idle', 'dnd', 'offline'] as status}{@const group =
       members.data?.filter((p) => p.status === status) ?? []}{#if group.length}<div
         class="member-group-label"
       >
-        {status === 'dnd' ? 'In the flow' : status === 'idle' ? 'A little away' : status}<span
+        {status === 'dnd' ? 'Do not disturb' : status === 'idle' ? 'Away' : status === 'offline' ? 'Offline' : 'Online'}<span
           >{group.length}</span
         >
       </div>
@@ -49,9 +48,7 @@
               status={p.status}
               speaking={(call.levels[p.user] ?? 0) > 0.5 && !!call.room}
             /><span
-              ><strong>{p.name}</strong><small
-                >{p.user === auth.userId ? 'Maker · that’s you' : 'Here for the good ideas'}</small
-              ></span
+              ><strong>{p.name}</strong>{#if p.user === auth.userId}<small>You</small>{/if}</span
             ></button
           >{#if call.room}<label class="volume-control"
               ><span class="sr-only">Volume for {p.name}</span><input

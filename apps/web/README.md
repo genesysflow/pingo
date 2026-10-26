@@ -36,7 +36,7 @@ room IDs. Accounts without spaces can create one or paste an invite.
 
 Messages use cursor pagination and optimistic updates. Optimistic IDs/timestamps are created once outside the
 update closure so RxFerrix can replay it safely. Threads, reactions, edits, soft deletes, attachments, search,
-Catch up, DMs, profile photos, space icons/invites, and room settings use the generated API. Typing is throttled
+The inbox, DMs, profile photos, space icons/invites, and room settings use the generated API. Typing is throttled
 to once every two seconds; presence sends an initial heartbeat and then one every 60 seconds. Visible rooms are
 marked read on opening, live arrivals, and returning to the tab. Server error codes have friendly wording.
 
@@ -143,3 +143,19 @@ Verified on 2026-10-23: `bun run check` reports zero errors/warnings; all 24 Vit
 succeeds. All four real-server Playwright suites pass through Vite and through backend-served `dist` at
 `127.0.0.1:8090`; all ten mock/design suites pass. `cargo test -p pingo-server` passes 20 tests,
 `cargo test -p pingo-sfu` passes 18 tests, and SFU formatting/clippy checks pass with warnings denied.
+
+## Design
+
+All styling lives in `src/app.css`, built on CSS variables set per theme on `.app-root` (light, dark, high
+contrast). The rules:
+
+- **Neutral chrome, one accent.** Surfaces are warm graphite (dark) or paper (light). The space's accent
+  (`--accent`, default `#ff6b35`, choices in `src/lib/theme.ts`) marks primary actions, selection and focus only.
+  `--on-accent` is computed so text on filled accents stays readable.
+- **Two typefaces.** Instrument Sans for everything you read; JetBrains Mono (`.readout`, section labels, times,
+  counts, kbd) for anything measured or status-like. No serif display type.
+- **Calls are always dark.** `.stage-view` and `.call-pill` override the theme variables locally. Speaking is
+  shown with the green `--live` outline and the segmented `Meter` component, not glows.
+- **Plain copy.** Labels say what things are (“Inbox”, “Load earlier messages”, “Join”). No taglines,
+  eyebrows or decorative illustrations.
+

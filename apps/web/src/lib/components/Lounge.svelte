@@ -1,5 +1,4 @@
 <script lang="ts">
-  import Flourish from './Flourish.svelte';
   import { api, useQuery, useAuth, type RoomSummary } from '../data';
   import type { CallController } from '../call/controller.svelte';
   import { spatialAudio, type Point } from '../logic/lounge';
@@ -9,6 +8,7 @@
   let { room, call, join }: { room: RoomSummary; call: CallController; join: (room: RoomSummary) => void } =
     $props();
   const people = useQuery(api.voice.participants, () => ({ room: room._id }));
+  const self = useQuery(api.profiles.me);
   let me = $state<Point>({ x: 400, y: 330 }),
     dragging = $state(false),
     canvas: HTMLDivElement;
@@ -42,14 +42,6 @@
 </script>
 
 <div class="lounge-view">
-  <div class="lounge-intro">
-    <div class="eyebrow"><Icon name="sprout" size={15} /> GROW A CONVERSATION</div>
-    <h1>The greenhouse.</h1>
-    <p>A few familiar faces. A little space to wander.</p>
-    <span class="lounge-instruction"
-      ><Icon name="compass" size={16} />Drag yourself closer to join a conversation.</span
-    >
-  </div>
   <div
     class="lounge-canvas"
     bind:this={canvas}
@@ -59,27 +51,19 @@
     onpointerup={() => (dragging = false)}
     onpointercancel={() => (dragging = false)}
   >
-    <span class="canvas-label">A PLACE TO JUST BE</span><span class="canvas-plant plant-one"
-      ><Flourish /></span
-    ><span class="canvas-plant plant-two"><Flourish /></span><span class="lounge-table table-one"></span><span
-      class="lounge-table table-two"
-    ></span><span class="canvas-coffee">☕</span>
+    <span class="canvas-label">Drag yourself toward people to hear them</span>
     <div class="hearing-range" style:left={`${me.x / 8}%`} style:top={`${me.y / 5}%`}>
-      <span>Your hearing range</span>
+      <span>Hearing range</span>
     </div>
     {#each others as p}<div
         class="lounge-person"
         style:left={`${p.pos.x / 8}%`}
         style:top={`${p.pos.y / 5}%`}
       >
-        <Avatar name={p.name} color={p.color} size={54} speaking={(call.levels[p.user] ?? 0) > 0.4} /><strong
+        <Avatar name={p.name} color={p.color} size={48} speaking={(call.levels[p.user] ?? 0) > 0.4} /><strong
           >{p.name.split(' ')[0]}</strong
         ><small
-          >{Math.round(p.mix.volume * 100)}% volume · {p.mix.pan < -0.1
-            ? 'left'
-            : p.mix.pan > 0.1
-              ? 'right'
-              : 'center'}</small
+          >{Math.round(p.mix.volume * 100)}% · {p.mix.pan < -0.1 ? 'L' : p.mix.pan > 0.1 ? 'R' : 'C'}</small
         >
       </div>{/each}
     <button
@@ -110,28 +94,21 @@
         }
       }}
       ><Avatar
-        name="Alex Morgan"
-        color="#b9a2e7"
-        size={58}
-        speaking={!call.muted && (call.levels.you ?? 0) > 0.5}
-      /><strong>You <Icon name="grip" size={12} /></strong></button
+        url={self.data?.avatarUrl}
+        name={self.data?.name ?? 'You'}
+        color={self.data?.color}
+        size={52}
+        speaking={!call.muted && (call.levels[call.userId] ?? 0) > 0.5}
+      /><strong>You</strong></button
     >
-    <div class="canvas-footer">
-      <span class="live-dot"></span>{others.length} people growing good ideas<span
-        >Spatial audio · Headphones feel best</span
-      >
-    </div>
   </div>
   <div class="lounge-bottom">
-    <div>
-      <Icon name="headphones" size={24} /><span
-        ><strong>Like being in the same room.</strong><small
-          >Closer voices get louder. Wander away for a quieter moment.</small
-        ></span
-      >
-    </div>
+    <span class="readout"
+      ><span class="live-dot"></span>{others.length + (call.room === room._id ? 1 : 0)} here · spatial audio · headphones
+      recommended</span
+    >
     {#if call.room !== room._id}<button class="button primary" onclick={() => join(room)}
-        ><Icon name="headphones" size={17} />Come on in<Icon name="upRight" size={15} /></button
-      >{:else}<span class="lounge-connected"><span class="live-dot"></span>You’re right here.</span>{/if}
+        ><Icon name="headphones" size={16} />Join lounge</button
+      >{:else}<span class="lounge-connected"><span class="live-dot"></span>Connected</span>{/if}
   </div>
 </div>

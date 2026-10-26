@@ -2,16 +2,28 @@
   import type { CallController } from '../call/controller.svelte';
   import Avatar from './Avatar.svelte';
   import Icon from './Icon.svelte';
-  let { call, expand, notice }: { call: CallController; expand: () => void; notice: (text: string) => void } =
-    $props();
+  import Meter from './Meter.svelte';
+  let {
+    call,
+    self,
+    expand,
+    notice,
+  }: {
+    call: CallController;
+    self?: { name: string; color: string; avatarUrl?: string } | null;
+    expand: () => void;
+    notice: (text: string) => void;
+  } = $props();
   let x = $state<number | null>(null),
     y = $state<number | null>(null),
     dragging = $state(false);
   const seconds = $derived(Math.max(0, Math.floor((call.clock - call.startedAt) / 1000)));
-  const time = $derived(`${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`);
+  const time = $derived(
+    `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`,
+  );
   let origin = { x: 0, y: 0, startX: 0, startY: 0 };
   function moveTo(left: number, top: number) {
-    x = Math.max(12, Math.min(window.innerWidth - 340, left));
+    x = Math.max(12, Math.min(window.innerWidth - 320, left));
     y = Math.max(12, Math.min(window.innerHeight - 90, top));
   }
   function down(e: PointerEvent) {
@@ -64,46 +76,56 @@
               r.top + (e.key === 'ArrowUp' ? -20 : e.key === 'ArrowDown' ? 20 : 0),
             );
           }
-        }}><Icon name="grip" size={16} /></button
+        }}><Icon name="grip" size={14} /></button
       ><Avatar
-        name="Alex Morgan"
-        color="#b9a2e7"
-        size={31}
-        speaking={!call.muted && (call.levels.you ?? 0) > 0.3}
+        url={self?.avatarUrl}
+        name={self?.name ?? 'You'}
+        color={self?.color}
+        size={28}
+        speaking={!call.muted && (call.levels[call.userId] ?? 0) > 0.3}
       /><button class="pill-room" onclick={expand}
         ><strong>{call.roomName}</strong><span
-          ><i class="live-dot"></i>{time}<span class="pill-quality">Your audio: {call.quality}</span></span
+          ><i class="live-dot"></i><span class="readout">{time}</span><span class="pill-quality"
+            >{call.quality}</span
+          ></span
         ></button
-      ><button class="icon-button" aria-label="Expand call" onclick={expand}
-        ><Icon name="expand" size={16} /></button
+      ><Meter level={call.muted ? 0 : (call.levels[call.userId] ?? 0)} segments={5} /><button
+        class="icon-button"
+        aria-label="Expand call"
+        title="Expand"
+        onclick={expand}><Icon name="expand" size={15} /></button
       >
     </div>
     <div class="pill-controls">
       <button
         class:control-off={call.muted}
         aria-label={call.muted ? 'Unmute microphone' : 'Mute microphone'}
+        title={call.muted ? 'Unmute' : 'Mute'}
         aria-pressed={call.muted}
-        onclick={() => call.toggleMute()}><Icon name={call.muted ? 'micOff' : 'mic'} size={17} /></button
+        onclick={() => call.toggleMute()}><Icon name={call.muted ? 'micOff' : 'mic'} size={16} /></button
       ><button
         class:control-off={call.deafened}
         aria-label={call.deafened ? 'Undeafen' : 'Deafen'}
+        title={call.deafened ? 'Undeafen' : 'Deafen'}
         aria-pressed={call.deafened}
         onclick={() => call.toggleDeafen()}
-        ><Icon name={call.deafened ? 'deafen' : 'headphones'} size={17} /></button
+        ><Icon name={call.deafened ? 'deafen' : 'headphones'} size={16} /></button
       ><button
         class:control-on={call.sharing}
         aria-label={call.sharing ? 'Stop screen sharing' : 'Share screen'}
+        title={call.sharing ? 'Stop sharing' : 'Share screen'}
         aria-pressed={call.sharing}
         onclick={() => {
           call.toggleShare();
           if (call.sharing) expand();
-        }}><Icon name="share" size={17} /></button
+        }}><Icon name="share" size={16} /></button
       ><button
         aria-label="Pop out call"
-        onclick={() => notice('Pop-out is coming with the desktop app. Your call stays here for now.')}
-        ><Icon name="external" size={16} /></button
-      ><button class="leave-control" aria-label="Leave call" onclick={() => call.leave()}
-        ><Icon name="leave" size={18} /></button
+        title="Pop out"
+        onclick={() => notice('Pop-out windows are coming to the desktop app.')}
+        ><Icon name="external" size={15} /></button
+      ><button class="leave-control" aria-label="Leave call" title="Leave" onclick={() => call.leave()}
+        ><Icon name="leave" size={16} /></button
       >
     </div>
   </div>{/if}

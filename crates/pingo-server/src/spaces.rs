@@ -125,7 +125,7 @@ pub async fn create_for(
         .insert(Space {
             name,
             slug,
-            accent: accent.unwrap_or_else(|| "#7c3aed".into()),
+            accent: accent.unwrap_or_else(|| "#ff6b35".into()),
             icon: None,
             owner: user,
         })

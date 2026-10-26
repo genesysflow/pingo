@@ -17,8 +17,8 @@
 
 <main class="setup">
   <form onsubmit={connect}>
-    <div class="eyebrow">PINGO</div>
-    <h1>Find your people.</h1>
+    <img src="/pingo.svg" width="36" height="36" alt="Pingo" />
+    <h1>Connect to a server</h1>
     <p>Enter your Pingo server address. We’ll remember it on this device.</p>
     <label class="field">Server URL<input type="url" bind:value={server} required placeholder="https://pingo.example.com" /></label>
     {#if error}<p role="alert" class="error">{error}</p>{/if}

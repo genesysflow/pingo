@@ -52,6 +52,6 @@
     height: 100%;
     object-fit: contain;
     display: block;
-    background: #17141f;
+    background: #0b0b0c;
   }
 </style>

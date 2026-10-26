@@ -110,7 +110,7 @@
                 color="#e6a4ba"
                 size={19}
               /><Avatar name="Alex Morgan" color="#b9a2e7" size={19} /></span
-            >{/if}{m.replyCount} replies<span class="muted tiny">View thread</span><Icon
+            >{/if}{m.replyCount} replies<span class="muted">View thread</span><Icon
             name="right"
             size={13}
           /></button
@@ -128,7 +128,7 @@
               error = errorMessage(e);
             }
           }}>Delete</button
-        ><button class="button small" onclick={() => (deleting = false)}>Keep it</button>
+        ><button class="button small" onclick={() => (deleting = false)}>Cancel</button>
       </div>{/if}
     {#if picker}<div class="emoji-picker" role="group" aria-label="Choose a reaction">
         {#each Object.values(emoji) as em}<button

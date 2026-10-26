@@ -134,19 +134,15 @@
 </script>
 
 {#if nativeDesktop}<NativeSoundCheck {call} {close} {complete} />{:else}
-<Modal title="Let’s find your good sound." {close}>
+<Modal title="Sound check" {close}>
   <div class="wizard-progress">
-    {#each ['Your devices', 'Your voice', 'Your sound'] as label, i}<button
+    {#each ['Devices', 'Microphone', 'Processing'] as label, i}<button
         class:active={step === i}
         class:complete={step > i}
         onclick={() => (step = i)}><span>{step > i ? '✓' : i + 1}</span>{label}</button
       >{/each}
   </div>
-  {#if step === 0}<div class="wizard-illustration">
-      <Icon name="headphones" size={55} /><span>Sound like yourself.</span>
-    </div>
-    <p class="settings-description">A quick sound check, so the first thing people hear is you.</p>
-    <label class="field"
+  {#if step === 0}    <label class="field"
       >Microphone<select
         bind:value={mic}
         onchange={() => {
@@ -166,12 +162,12 @@
       ></label
     >
     <div class="tip">
-      <Icon name="headphones" size={17} />Headphones help everyone sound a little clearer.
+      <Icon name="headphones" size={17} />Headphones stop your speakers from leaking into your microphone.
     </div>
-  {:else if step === 1}<h3>A little hello, just for you.</h3>
+  {:else if step === 1}<h3>Test your microphone</h3>
     <p class="settings-description">
-      Say a few words. You’ll see your voice here, and you can play back a five-second clip. It stays on this
-      device.
+      Say a few words and watch the meter, or record five seconds and play it back. The clip runs through
+      your current settings and never leaves this device.
     </p>
     <div
       class="mic-meter"
@@ -196,8 +192,7 @@
     </div>
     <audio bind:this={player} src={recordingUrl}></audio>
     <p class="muted tiny">Your browser will ask before using your microphone.</p>
-  {:else}<h3>A little less noise. A little more you.</h3>
-    <p class="settings-description">Choose what feels right. You can change this any time.</p>
+  {:else}<h3>Processing</h3>
     <label class="field"
       >Noise suppression
       <div class="segmented large">
@@ -210,34 +205,31 @@
     >
     <p class="settings-description">
       {studio
-        ? 'Studio keeps all processing off so music and instruments keep their detail.'
+        ? 'Studio sends your microphone unprocessed, in stereo.'
         : suppression === 'Off'
-          ? 'Your microphone, just as it is. Best in a quiet room.'
+          ? 'Your microphone as it is. Fine in a quiet room.'
           : suppression === 'Gentle'
-            ? 'Softens keyboard taps and background hum. A good everyday choice.'
-            : 'Keeps busy rooms in the background. Your voice stays up front.'}
+            ? 'Removes most noise, capped at 18 dB so the room keeps some air.'
+            : 'Removes as much noise as possible. Best for loud rooms.'}
     </p>
     <label class="setting-toggle"
       ><span
         ><strong>Studio</strong><small
-          >For music, instruments, and all the little details.<br />Turns off echo cancellation, noise
-          suppression, and automatic volume.</small
+          >Stereo for music and instruments. Turns off echo cancellation, noise suppression and automatic
+          gain.</small
         ></span
       ><input type="checkbox" role="switch" bind:checked={studio} /></label
     >
-    <div class="tip"><Icon name="music" size={17} />Use headphones in Studio to keep echoes out.</div>{/if}
+{/if}
   {#if error}<p class="error" role="alert">{error}</p>{/if}
   <div class="wizard-footer">
     <button class="text-button" onclick={step ? () => step-- : close}
-      >{step ? 'Back a little' : 'Check later'}</button
+      >{step ? 'Back' : 'Skip for now'}</button
     ><span>{step + 1} of 3</span><button
       class="button primary"
       disabled={recording}
       onclick={() => (step < 2 ? step++ : finish())}
-      >{step < 2 ? 'Keep going' : 'Sounds good'}<Icon
-        name={step < 2 ? 'arrowRight' : 'check'}
-        size={16}
-      /></button
+      >{step < 2 ? 'Next' : 'Done'}</button
     >
   </div>
 </Modal>

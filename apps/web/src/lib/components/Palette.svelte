@@ -32,8 +32,8 @@
     [
       ...rooms.map((r) => ({
         title: r.name,
-        detail: r.kind === 'lounge' ? 'Spatial lounge' : 'Room',
-        icon: r.kind === 'lounge' ? ('sprout' as const) : ('hash' as const),
+        detail: r.kind === 'lounge' ? 'Lounge' : 'Room',
+        icon: r.kind === 'lounge' ? ('radio' as const) : ('hash' as const),
         run: () => navigate(r._id),
       })),
       ...spaces.map((s) => ({
@@ -59,9 +59,9 @@
         { title: 'Set status', action: 'status', icon: 'smile' as const },
         { title: 'Change theme', action: 'theme', icon: 'sun' as const },
         { title: 'Sound check', action: 'sound', icon: 'audio' as const },
-        { title: 'Catch up', action: 'inbox', icon: 'inbox' as const },
+        { title: 'Inbox', action: 'inbox', icon: 'inbox' as const },
         { title: 'Keyboard shortcuts', action: 'shortcuts', icon: 'keyboard' as const },
-      ].map((a) => ({ title: a.title, detail: 'Make it happen', icon: a.icon, run: () => action(a.action) })),
+      ].map((a) => ({ title: a.title, detail: 'Action', icon: a.icon, run: () => action(a.action) })),
     ].filter((e) => e.title.toLowerCase().includes(text.toLowerCase())),
   );
   const results = $derived([
@@ -99,11 +99,11 @@
   }
 </script>
 
-<Modal title="Find your way" {close}>
+<Modal title="Search" {close}>
   <div class="palette-search">
     <Icon name="search" size={22} /><input
       aria-label="Search commands, rooms, people and messages"
-      placeholder="Where would you like to go?"
+      placeholder="Rooms, people, messages, actions…"
       bind:value={text}
       oninput={() => (selected = 0)}
       onkeydown={keydown}
@@ -115,7 +115,7 @@
     /><kbd>esc</kbd>
   </div>
   {#if error}<p class="error" role="alert">{error}</p>{/if}
-  <div class="palette-section-label">{text ? 'A FEW GOOD MATCHES' : 'YOUR NEXT LITTLE MOVE'}</div>
+  <div class="palette-section-label">{text ? 'Results' : 'Jump to'}</div>
   <div class="command-results" id="command-results" role="listbox">
     {#each results as r, i}<button
         id={`command-${i}`}
@@ -128,12 +128,10 @@
           ><strong>{r.title}</strong><small>{r.detail}</small></span
         >{#if selected === i}<Icon name="enter" size={16} />{/if}</button
       >{/each}{#if !results.length}<p class="search-empty">
-        No matches yet. Try a name, room, or a few words.
+        No matches.
       </p>{/if}
   </div>
   <div class="palette-footer">
-    <span><kbd>↑</kbd><kbd>↓</kbd> to explore</span><span><kbd>↵</kbd> to go</span><span
-      >Good things are a few keys away.</span
-    >
+    <span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span>
   </div>
 </Modal>

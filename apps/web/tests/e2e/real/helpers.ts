@@ -22,8 +22,8 @@ export async function signup(page: Page, name: string) {
   await page.getByLabel('Your name', { exact: true }).fill(name);
   await page.getByLabel('Email address', { exact: true }).fill(`${name.toLowerCase()}-${crypto.randomUUID()}@pingo.test`);
   await page.getByLabel('Password', { exact: true }).fill('correct-horse-pingo');
-  await submitAuth(page, page.getByRole('button', { name: 'Make yourself at home', exact: true }), 'signup');
-  await expect(page.getByRole('heading', { name: 'Make a little space.' })).toBeVisible();
+  await submitAuth(page, page.getByRole('button', { name: 'Create account', exact: true }), 'signup');
+  await expect(page.getByRole('heading', { name: 'Create your first space' })).toBeVisible();
 }
 export async function createSpace(page: Page) {
   await page.getByLabel('Space name', { exact: true }).fill(`Browser friends ${Date.now()}`);
@@ -36,7 +36,7 @@ export async function invite(page: Page) {
   await page.getByRole('button', { name: 'Space settings & invites' }).click();
   await page.getByRole('button', { name: 'Create an invite', exact: false }).click();
   const link = await page.getByLabel('Invite link', { exact: true }).inputValue();
-  await page.getByRole('button', { name: 'Back to your people' }).click();
+  await page.getByRole('button', { name: 'Back', exact: true }).click();
   return link;
 }
 export async function accept(page: Page, link: string) {

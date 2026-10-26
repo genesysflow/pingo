@@ -49,7 +49,7 @@
   <label class="setting-toggle"><span><strong>Studio</strong><small>Preserve music; use headphones.</small></span><input type="checkbox" disabled={testing} bind:checked={settings.studio} /></label>
   <label class="setting-toggle"><span><strong>Echo cancellation</strong></span><input type="checkbox" disabled={testing || settings.studio} checked={settings.echoCancel ?? true} onchange={e => { settings.echoCancel = e.currentTarget.checked; }} /></label>
   <meter min="0" max="1" value={level} aria-label="Microphone input level"></meter>
-  <div class="inline-actions"><button class="button" disabled={!!call.room} onclick={testing ? stop : test}>{testing ? 'Stop sound check' : 'Hear myself for 5 seconds'}</button><button class="button primary" disabled={testing} onclick={finish}>Sounds good</button></div>
+  <div class="inline-actions"><button class="button" disabled={!!call.room} onclick={testing ? stop : test}>{testing ? 'Stop sound check' : 'Hear myself for 5 seconds'}</button><button class="button primary" disabled={testing} onclick={finish}>Done</button></div>
   {#if call.room}<p class="settings-description">Leave your call to test your microphone.</p>{/if}
   {#if error}<p role="alert" class="error">{error}</p>{/if}
 </Modal>

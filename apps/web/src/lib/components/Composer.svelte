@@ -52,7 +52,7 @@
           ? [
               { label: '/call', value: '/call', detail: 'Pull up a chair', icon: '↗' },
               { label: '/share', value: '/share', detail: 'Share your screen', icon: '↗' },
-              { label: '/status', value: '/status', detail: 'Set a little status', icon: '◉' },
+              { label: '/status', value: '/status', detail: 'Set your status', icon: '◉' },
               { label: '/shrug', value: '¯\\_(ツ)_/¯ ', detail: 'Sometimes words aren’t enough', icon: '¯' },
             ].filter((s) => s.label.includes(token))
           : []
@@ -247,7 +247,7 @@
       bind:this={input}
       bind:value={text}
       aria-label={threadRoot ? 'Reply to thread' : `Message ${name}`}
-      placeholder={threadRoot ? 'Keep the conversation going…' : `A little something for #${name}…`}
+      placeholder={threadRoot ? 'Reply…' : `Message #${name}`}
       maxlength="4000"
       rows="2"
       oninput={changed}
@@ -301,8 +301,8 @@
     />
   </div>
   <div class="composer-hint">
-    <span><strong>Enter</strong> to send · <strong>Shift + Enter</strong> for a new line</span><span
-      >Make a little space for kindness <Icon name="sparkles" size={12} /></span
+    <span><kbd>Enter</kbd> send · <kbd>Shift Enter</kbd> new line</span><span
+      >**bold** · *italic* · `code` · @mention</span
     >
   </div>
   {#if error}<p class="error" role="alert">{error}</p>{/if}
