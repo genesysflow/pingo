@@ -1,0 +1,40 @@
+# Self-hosted Pingo. Copy .env.example to .env, fill it in, then:
+#   docker compose up -d                     # Pingo on http://<host>:8090 (put your own HTTPS in front)
+#   docker compose --profile https up -d     # plus Caddy with automatic HTTPS for PINGO_DOMAIN
+# Full guide: docs/SELF_HOSTING.md
+services:
+  pingo:
+    build: .
+    image: pingo:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      RXFERRIX_PUBLIC_URL: ${PINGO_URL:?Set PINGO_URL in .env}
+      PINGO_UDP_PORT: ${PINGO_UDP_PORT:-40000}
+    ports:
+      - "${PINGO_HTTP_PORT:-8090}:8090/tcp"
+      # The media server: browsers send voice and video straight to this port.
+      - "${PINGO_UDP_PORT:-40000}:${PINGO_UDP_PORT:-40000}/udp"
+    volumes:
+      - pingo-data:/data
+
+  caddy:
+    profiles: [https]
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      PINGO_DOMAIN: ${PINGO_DOMAIN:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on: [pingo]
+
+volumes:
+  pingo-data:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,13 @@
+.git
+**/target
+**/node_modules
+**/dist
+apps/web/public/denoise
+apps/web/test-results
+apps/web/playwright-report
+apps/desktop/src-tauri/gen
+fx_data
+*.db
+*.db-wal
+*.db-shm
+.env
