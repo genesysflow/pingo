@@ -3,7 +3,7 @@ use crate::{
     audio::{
         apm::AudioProcessor,
         codec::{EncodedPacket, Encoder, PacketDuration, Profile},
-        denoise::{NoiseLevel, NoiseSuppressor, RnNoise},
+        denoise::{self, NoiseLevel, NoiseSuppressor},
         jitter::{JitterBuffer, JitterStats},
         level::{self, Gate, VoiceActivity},
         mixer::{Mixer, ParticipantMix},
@@ -48,7 +48,7 @@ impl Default for AudioSettings {
 pub struct SendPipeline {
     settings: AudioSettings,
     apm: AudioProcessor,
-    denoise: RnNoise,
+    denoise: Box<dyn NoiseSuppressor>,
     vad: VoiceActivity,
     encoder: Encoder,
     pending: Vec<f32>,
@@ -62,7 +62,7 @@ impl SendPipeline {
     pub fn new(settings: AudioSettings) -> Result<Self> {
         Ok(Self {
             apm: AudioProcessor::new(settings.agc, settings.echo_cancel)?,
-            denoise: RnNoise::default(),
+            denoise: denoise::default_suppressor(),
             vad: VoiceActivity::default(),
             encoder: Encoder::new(settings.profile, settings.packet_duration)?,
             settings,
@@ -90,10 +90,13 @@ impl SendPipeline {
             self.pending.clear();
             self.pending_speaking = false;
         }
-        if settings.noise_level != self.settings.noise_level
-            || settings.profile != self.settings.profile
+        // Strength changes apply in place; stale state from another profile or
+        // from before an Off period would smear the first frames instead.
+        if settings.profile != self.settings.profile
+            || (self.settings.noise_level == NoiseLevel::Off
+                && settings.noise_level != NoiseLevel::Off)
         {
-            self.denoise = RnNoise::default();
+            self.denoise = denoise::default_suppressor();
         }
         self.apm.configure(settings.agc, settings.echo_cancel);
         self.settings = settings;

@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/pingo-proto", "crates/pingo-server", "crates/pingo-sfu", "crates/pingo-media", "apps/desktop/src-tauri"]
+members = ["crates/pingo-proto", "crates/pingo-server", "crates/pingo-sfu", "crates/pingo-media", "crates/pingo-denoise", "apps/desktop/src-tauri"]
 
 [workspace.package]
 edition = "2024"
@@ -12,6 +12,7 @@ publish = false
 pingo-proto = { path = "crates/pingo-proto" }
 pingo-sfu = { path = "crates/pingo-sfu" }
 pingo-media = { path = "crates/pingo-media" }
+pingo-denoise = { path = "crates/pingo-denoise" }
 rxferrix = "0.6.1"
 str0m = "0.24"
 tokio = { version = "1", features = ["full"] }
@@ -21,3 +22,57 @@ serde_json = "1"
 thiserror = "2"
 tracing = "0.1"
 anyhow = "1"
+
+# tract trips a debug-only "duplicate name" assertion while optimizing the
+# DeepFilterNet graphs, and unoptimized inference is ~50x slower than real time.
+[profile.dev.package.tract-core]
+opt-level = 3
+debug-assertions = false
+
+[profile.dev.package.tract-data]
+opt-level = 3
+debug-assertions = false
+
+[profile.dev.package.tract-linalg]
+opt-level = 3
+debug-assertions = false
+
+[profile.dev.package.tract-hir]
+opt-level = 3
+debug-assertions = false
+
+[profile.dev.package.tract-onnx]
+opt-level = 3
+debug-assertions = false
+
+[profile.dev.package.tract-onnx-opl]
+opt-level = 3
+debug-assertions = false
+
+[profile.dev.package.tract-pulse]
+opt-level = 3
+debug-assertions = false
+
+[profile.dev.package.tract-pulse-opl]
+opt-level = 3
+debug-assertions = false
+
+[profile.dev.package.tract-nnef]
+opt-level = 3
+debug-assertions = false
+
+# Browser noise suppressor (crates/pingo-denoise → apps/web). Size-optimized
+# except the numeric kernels that do the per-frame work.
+[profile.denoise-wasm]
+inherits = "release"
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+[profile.denoise-wasm.package.tract-linalg]
+opt-level = 3
+
+[profile.denoise-wasm.package.pingo-denoise]
+opt-level = 3

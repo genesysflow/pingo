@@ -72,7 +72,7 @@ including FEC attempts. It is a packet percentage rather than a sample percentag
 
 - Default builds enable `webrtc-apm`: bundled `webrtc-audio-processing 2.1`,
   AEC3 (full echo canceller), adaptive AGC2, split-band high-pass, and **APM noise
-  suppression disabled** because RNNoise follows it. Studio bypasses APM.
+  suppression disabled** because DeepFilterNet follows it. Studio bypasses APM.
   The actual stereo receive mix feeds the reverse stream every 10 ms; mono
   capture feeds the forward stream. CPAL capture/playback timestamps, ring
   occupancy and resampler delay supply stream delay before capture processing.
@@ -86,15 +86,13 @@ including FEC attempts. It is a packet percentage rather than a sample percentag
   (>96.8% echo-power reduction), and double-talk near-end gain between 0.5 and
   1.5 so silencing the microphone cannot pass. Measured ERLE and gain are printed
   by `cargo test -p pingo-media --test aec -- --nocapture`.
-- RNNoise (`nnnoiseless`) is the working default suppressor, with Off/Gentle/Strong
-  levels. Gentle mixes 50% dry with wet; the dry signal is delayed 10 ms to align
-  with RNNoise and avoid comb filtering. Strong uses the wet signal only. Weights
-  ship with the crate; no runtime downloads occur.
-- `--features deepfilter` **builds**, but is an explicit unavailable-backend stub.
-  Published `deep_filter 0.2.5` (library name `df`) contains FFT/ERB processing,
-  without an inference runner or bundled model. Its DSP state is instantiated to
-  verify compatibility; `denoise::deepfilter()` returns an explanatory error.
-  Shipping an offline model and inference integration is future work.
+- Default builds enable `deepfilter`: **DeepFilterNet3** (`crates/pingo-denoise`) is
+  the suppressor. Gentle caps attenuation at 18 dB; Strong removes as much as the
+  model can. Strength changes apply in place. It adds 30 ms of delay (RNNoise: 10 ms)
+  and about 4% of one core. The model is compiled in; there are no runtime downloads.
+  `denoise::preload()` parses it ahead of the first call (the desktop app does this at startup).
+- Without `deepfilter`, or if the model fails to load, RNNoise (`nnnoiseless`) is the
+  fallback. Its Gentle mixes 50% dry, delayed 10 ms to align with RNNoise and avoid comb filtering.
 - Loudness normalization integrates roughly 400 ms of gated energy with slow
   gain changes. It is not a certified EBU R128 meter (no K-weighting/true-peak
   meter). Spatial output uses constant-power panning, not HRTF.
@@ -114,7 +112,6 @@ including FEC attempts. It is a packet percentage rather than a sample percentag
 ```sh
 cargo test --workspace
 cargo test -p pingo-media --no-default-features
-cargo test -p pingo-media --features deepfilter
 cargo check -p pingo-media --examples
 cargo clippy --workspace --all-targets -- -D warnings
 cargo fmt --all --check
@@ -123,7 +120,7 @@ cargo test -p pingo-media --test aec -- --nocapture
 
 The default media suite has 20 hardware-free tests, plus ignored hardware and
 release-timing tests. Coverage includes AEC convergence/double-talk, DC rejection,
-RNNoise, resampling, Opus profiles/PLC/FEC, runtime controls, mixing, RTP wrap,
+DeepFilterNet and RNNoise suppression, resampling, Opus profiles/PLC/FEC, runtime controls, mixing, RTP wrap,
 loss bursts/reordering/duplicates, adaptive delay and clock drift, corrupted
 payloads, and encrypted in-memory RTC audio/data/re-offer/glare negotiation.
 The server adds five native-client integration scenarios described below.

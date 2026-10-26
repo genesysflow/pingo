@@ -131,6 +131,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![desktop_config, desktop_save_config, desktop_invites, desktop_notify, call_join, call_leave, call_configure, call_data, call_ptt, call_devices, call_loopback, video_subscribe, video_unsubscribe, video_ack, call_video_quality, probe::desktop_probe, probe::desktop_probe_report, probe::video_spike])
         .setup(|app| {
             app.manage(calls::CallManager::default());
+            // Parsing the noise suppression model takes a few hundred ms; do it before the first call.
+            std::thread::spawn(pingo_media::audio::denoise::preload);
             // Pure Wayland sessions may have no X11 hotkey service. Keep the rest of Pingo usable.
             let shortcuts_available = match app.handle().plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(|app, _, event| {
                 let _ = app.state::<calls::CallManager>().ptt(event.state == ShortcutState::Pressed);
