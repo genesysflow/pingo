@@ -13,7 +13,7 @@ Everything it stores lives in one data directory (`/data` in the container).
 
 ## Quick start
 
-Install [Docker Engine with the Compose plugin](https://docs.docker.com/engine/install/) on your server first.
+Install [Docker](https://docs.docker.com/engine/install/) with the `docker compose` command available on your server first.
 Then run the setup script from the Pingo website:
 
 ```sh

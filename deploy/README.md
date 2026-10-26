@@ -7,7 +7,7 @@ curl -fsSL https://YOUR-PINGO-SITE/install.sh | bash
 ```
 
 It asks for your domain and public IP, generates the media secret, writes `.env`, `compose.yaml` and `Caddyfile`
-to `./pingo`, then pulls and starts the containers. Install Docker with its Compose plugin first. Git, Rust
+to `./pingo`, then pulls and starts the containers. Make sure Docker and the `docker compose` command are available first. Git, Rust
 and Bun are not needed on the server. The website fills in the command's address and the published image.
 
 To run a saved script with explicit settings:

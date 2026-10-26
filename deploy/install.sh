@@ -28,7 +28,7 @@ Usage: bash install.sh [options]
   --no-start           Write and validate configuration without starting Docker services
   --help               Show this help
 
-Requires Docker with the Compose plugin. Existing configuration is never overwritten.
+Requires Docker with the docker compose command available. Existing configuration is never overwritten.
 HELP
 }
 while (($#)); do
@@ -51,8 +51,8 @@ while (($#)); do
   esac
 done
 
-command -v docker >/dev/null || die 'Install Docker Engine with its Compose plugin first: https://docs.docker.com/engine/install/'
-docker compose version >/dev/null 2>&1 || die 'Install the Docker Compose plugin first: https://docs.docker.com/compose/install/'
+command -v docker >/dev/null || die 'Install Docker first: https://docs.docker.com/engine/install/'
+docker compose version >/dev/null 2>&1 || die 'The docker compose command is unavailable. See: https://docs.docker.com/compose/install/'
 if ((start)); then
   docker info >/dev/null 2>&1 || die 'Docker is not available. Start it and make sure your user can run docker.'
 fi

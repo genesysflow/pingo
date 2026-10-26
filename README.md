@@ -9,7 +9,7 @@ Chat, voice and screen sharing for gaming groups, friends, communities and teams
 
 ## Run it
 
-Run the setup script from the website on a server with Docker and its Compose plugin installed:
+Run the setup script from the website on a server with Docker installed and the `docker compose` command available:
 
 ```sh
 curl -fsSL https://YOUR-PINGO-SITE/install.sh | bash
