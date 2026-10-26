@@ -13,7 +13,7 @@ pub struct DmSummary {
 }
 #[mutation]
 pub async fn open(ctx: &MutationCtx, user: Id<User>) -> Result<Id<Room>> {
-    let me = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
+    let me = ctx.auth.require_user()?;
     if me == user {
         return Err(user_error("forbidden", "Choose another person"));
     }
@@ -53,7 +53,7 @@ pub async fn open(ctx: &MutationCtx, user: Id<User>) -> Result<Id<Room>> {
 }
 #[query]
 pub async fn list(ctx: &QueryCtx) -> Result<Vec<DmSummary>> {
-    let me = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
+    let me = ctx.auth.require_user()?;
     let rows = ctx
         .db
         .query::<DmMember>()

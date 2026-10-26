@@ -2,6 +2,7 @@
 use super::*;
 use crate::model::{Room, Space};
 use crate::{invites, rooms, spaces};
+use axum::http::StatusCode;
 use futures_util::{SinkExt, StreamExt};
 use pingo_proto::signal::PublishedTrack;
 use pingo_proto::{ClientMsg, ServerMsg, TrackKind, token};
@@ -41,6 +42,7 @@ impl Server {
     async fn start_udp(dev: bool, udp_bind: &str) -> Self {
         let t = TestApp::with_options(rxferrix::AppOptions {
             dev,
+            guard: Some(rxferrix::Guard::new(crate::access::guard)),
             ..Default::default()
         })
         .await
@@ -81,6 +83,17 @@ impl Server {
             public_ips: vec!["127.0.0.1".parse().unwrap()],
             ..Default::default()
         });
+        t.mutation::<voice::set_state>((room, bob, false, false, false, false))
+            .await
+            .unwrap();
+        media.start(t.app().clone()).await.unwrap();
+        assert!(
+            t.as_user(ann)
+                .query::<voice::participants>((room,))
+                .await
+                .unwrap()
+                .is_empty()
+        );
         let router = rxferrix::ops::web::router(
             t.app().clone(),
             &rxferrix::ops::WebOptions {
@@ -381,12 +394,6 @@ impl Client {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn embedded_media_updates_queries_forwards_audio_and_cleans_up() {
     let server = Server::start(true).await;
-    // Simulate crash residue for a different user, then exercise first-request cleanup.
-    server
-        .t
-        .mutation::<voice::set_state>((server.room, server.bob, false, false, false, false))
-        .await
-        .unwrap();
     let ann_token = server.token(&server.ann_auth).await;
     let mut ann = Client::join(&server, ann_token, true).await;
     ann.wait(|e| matches!(e, ClientEvent::Connected)).await;
@@ -513,10 +520,20 @@ async fn production_admission_fails_closed_when_secret_is_missing_or_removed() {
     assert!(matches!(reply, ServerMsg::Error { code, .. } if code == "invalid_token"));
     let _ = ws.close(None).await;
     server.stop().await;
-    // Start the other instance before shutting it down (its media is lazy).
-    let (mut ws, _) = websocket(dev.address, dev_token).await;
-    let _ = ws.close(None).await;
     dev.stop().await;
+}
+
+#[tokio::test]
+async fn media_start_fails_if_the_udp_port_is_taken() {
+    let socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+    let app = TestApp::new().await.unwrap();
+    let media = Media::new(SfuConfig {
+        udp_bind: socket.local_addr().unwrap(),
+        public_ips: vec!["127.0.0.1".parse().unwrap()],
+        ..Default::default()
+    });
+    assert!(media.start(app.app().clone()).await.is_err());
+    assert!(media.sfu.get().is_none());
 }
 
 mod native;

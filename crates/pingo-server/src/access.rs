@@ -1,17 +1,17 @@
 //! Who may use this server: anyone, invited people only, and/or certain email addresses.
 //!
-//! RxFerrix creates accounts before Pingo sees them (and offers no pre-sign-up hook), so the policy
-//! gates *use* instead: every function resolves the caller through [`require_user`], and an account
-//! outside the policy can only read [`status`], verify its email and accept an invite.
+//! RxFerrix checks sign-ups before creating accounts and guards public client functions centrally.
+//! Policy reads stay reactive so changing admission rules also updates existing subscriptions.
 //!
 //! Configuration is read from RxFerrix Environment first (dashboard or `pingo-server env set`), so it
 //! can change at run time and queries rerun when it does; otherwise from the process environment
 //! (Docker), which is fixed at startup.
 use crate::model::{SpaceMember, user_error};
 use rxferrix::QueryDb;
-use rxferrix::auth::{Auth, User};
+use rxferrix::auth::{SignUpAttempt, SignUpMethod, User};
 use rxferrix::env::Env;
 use rxferrix::prelude::*;
+use rxferrix::{App, GuardCtx, GuardedFunction};
 use std::sync::OnceLock;
 
 pub const REGISTRATION: &str = "PINGO_REGISTRATION";
@@ -217,28 +217,67 @@ fn refusal(admission: Admission) -> Error {
     }
 }
 
-/// The signed-in user, if the registration policy admits them. Use this instead of
-/// `ctx.auth.require_user()` in every function except the ones that let people in.
-pub async fn require_user(auth: &Auth, env: &Env, db: &QueryDb) -> Result<Id<User>> {
-    let user = auth.require_user()?;
-    match admission(db, &policy(env).await?, user).await? {
-        Admission::Admitted => Ok(user),
+pub async fn guard(ctx: GuardCtx, function: GuardedFunction) -> Result<()> {
+    if function.is::<status>()
+        || function.is::<crate::profiles::me>()
+        || function.is::<crate::invites::preview>()
+        || function.is::<crate::dev::seed>()
+        || function.is::<crate::dev::last_code>()
+    {
+        return Ok(());
+    }
+    let user = ctx.auth.require_user()?;
+    let mut policy = policy(&ctx.env).await?;
+    if function.is::<crate::invites::accept>() {
+        policy.registration = Registration::Open;
+    }
+    match admission(&ctx.db, &policy, user).await? {
+        Admission::Admitted => Ok(()),
         refused => Err(refusal(refused)),
     }
 }
 
-/// Like [`require_user`], but only the email rule applies: accepting an invite is how an
-/// invite-only server lets new people in.
-pub async fn require_invitable(auth: &Auth, env: &Env, db: &QueryDb) -> Result<Id<User>> {
-    let user = auth.require_user()?;
-    let policy = Policy {
-        registration: Registration::Open,
-        ..policy(env).await?
-    };
-    match admission(db, &policy, user).await? {
-        Admission::Admitted => Ok(user),
-        refused => Err(refusal(refused)),
+pub async fn before_sign_up(app: App, attempt: SignUpAttempt) -> Result<()> {
+    let code = attempt.redirect_to.as_deref().and_then(invite_code);
+    app.query::<check_sign_up>((
+        attempt.email,
+        attempt.email_verified,
+        attempt.method == SignUpMethod::Password,
+        code,
+    ))
+    .await
+}
+
+fn invite_code(redirect: &str) -> Option<String> {
+    let url = url::Url::parse(redirect).ok()?;
+    url.path()
+        .strip_prefix("/invite/")
+        .filter(|code| !code.is_empty() && !code.contains('/'))
+        .map(str::to_owned)
+}
+
+#[internal_query]
+pub async fn check_sign_up(
+    ctx: &QueryCtx,
+    email: Option<String>,
+    email_verified: bool,
+    password: bool,
+    code: Option<String>,
+) -> Result<()> {
+    let policy = policy(&ctx.env).await?;
+    if let Some(rule) = &policy.emails {
+        if !email.as_deref().is_some_and(|email| rule.allows(email)) {
+            return Err(refusal(Admission::EmailNotAllowed));
+        }
+        if !email_verified && !password {
+            return Err(refusal(Admission::VerifyEmail));
+        }
     }
+    if policy.registration == Registration::Invite && !setting_up(&ctx.db).await? {
+        let code = code.ok_or_else(|| refusal(Admission::InviteRequired))?;
+        crate::invites::require_valid(&ctx.db, code, ctx.now()).await?;
+    }
+    Ok(())
 }
 
 #[object]
@@ -282,6 +321,24 @@ pub async fn status(ctx: &QueryCtx) -> Result<AccessStatus> {
 #[cfg(test)]
 mod unit {
     use super::*;
+
+    #[test]
+    fn signup_redirect_only_extracts_invitation_paths() {
+        assert_eq!(
+            invite_code("https://chat.example/invite/secret?source=email#auth"),
+            Some("secret".into())
+        );
+        for redirect in [
+            "https://chat.example/",
+            "https://chat.example/?invite=secret",
+            "https://chat.example/invite/",
+            "https://chat.example/invite/secret/extra",
+            "/invite/secret",
+            "not a URL",
+        ] {
+            assert_eq!(invite_code(redirect), None);
+        }
+    }
 
     #[test]
     fn parses_registration_and_email_rules() {

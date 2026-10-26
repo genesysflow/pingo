@@ -7,7 +7,8 @@ camelCase (RxFerrix does that automatically). Ids are strings in TS (`Id<"rooms"
 If the backend needs to deviate, update this file in the same change.
 
 Every function requires a signed-in user unless noted, and that user must be admitted by the registration policy
-(`access.rs`, see below): otherwise it fails with `invite_required`, `email_not_allowed` or `email_not_verified`. Authorization goes through one helper,
+(`access.rs`, see below): RxFerrix's public-function guard enforces admission centrally, otherwise failing with
+`invite_required`, `email_not_allowed` or `email_not_verified`. Authorization goes through one helper,
 `require_perm(ctx, space, Perm::X)`. Errors use `user_error(code, message)` with the codes listed below.
 
 ## Tables (see PLAN.md §4.1)
@@ -96,5 +97,15 @@ Read from RxFerrix Environment (dashboard or `pingo-server env set`), falling ba
   space; until the first space exists, any account is admitted so it can create one.
 - `PINGO_ALLOWED_EMAILS`: addresses and domains (`ada@example.com, @example.com`). When set, the account's email
   must match and be verified, invites included.
+
+RxFerrix's `before_sign_up` hook rejects disallowed accounts before they are created (password, magic link/code,
+and OAuth). After setup, invite-only sign-ups must pass an allowed `redirectTo` URL with the path `/invite/<code>`;
+the invite must exist, be unexpired, have uses remaining, and refer to an existing space. Checking sign-up does
+not consume the invite: `invites.accept` still checks and consumes it transactionally after sign-in. Password
+sign-ups with an allowed but unverified address must verify it before using protected functions. Existing accounts
+are checked by the guard on every public client call and subscribed-query rerun. `access.status`, `profiles.me`,
+`invites.preview` and dev-only utilities remain exempt; `invites.accept` checks the email rule only. Internal/server
+calls are trusted and bypass the guard. The dynamic policy remains app code because RxFerrix's builder allowlists
+are fixed at startup.
 
 Limits: message body ≤ 4000 chars, room/space name 1–32 chars, ≤ 10 attachments, 20 reactions per message.

@@ -11,7 +11,7 @@ pub async fn of(db: &QueryDb, user: Id<User>) -> Result<Option<Doc<Presence>>> {
 }
 #[mutation]
 pub async fn heartbeat(ctx: &MutationCtx) -> Result<()> {
-    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
+    let user = ctx.auth.require_user()?;
     touch(ctx, user, None, None).await
 }
 #[mutation]
@@ -21,7 +21,7 @@ pub async fn setStatus(
     status: PresenceStatus,
     text: Option<String>,
 ) -> Result<()> {
-    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
+    let user = ctx.auth.require_user()?;
     if text.as_ref().is_some_and(|s| s.chars().count() > 200) {
         return Err(user_error(
             "too_long",

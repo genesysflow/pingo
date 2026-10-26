@@ -32,7 +32,7 @@ pub struct InboxItem {
 }
 #[query]
 pub async fn list(ctx: &QueryCtx, include_done: Option<bool>) -> Result<Vec<InboxItem>> {
-    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
+    let user = ctx.auth.require_user()?;
     let mut rows = ctx
         .db
         .query::<Mention>()
@@ -92,7 +92,7 @@ pub async fn list(ctx: &QueryCtx, include_done: Option<bool>) -> Result<Vec<Inbo
 }
 #[query]
 pub async fn count(ctx: &QueryCtx) -> Result<u64> {
-    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
+    let user = ctx.auth.require_user()?;
     Ok(ctx
         .db
         .aggregate(Mention::pending_per_user)
@@ -103,7 +103,7 @@ pub async fn count(ctx: &QueryCtx) -> Result<u64> {
 #[mutation]
 #[allow(non_snake_case)]
 pub async fn markDone(ctx: &MutationCtx, item: Id<Mention>) -> Result<()> {
-    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
+    let user = ctx.auth.require_user()?;
     let n = ctx
         .db
         .get(item)
@@ -120,7 +120,7 @@ pub async fn markDone(ctx: &MutationCtx, item: Id<Mention>) -> Result<()> {
 #[mutation]
 #[allow(non_snake_case)]
 pub async fn markAllDone(ctx: &MutationCtx) -> Result<()> {
-    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
+    let user = ctx.auth.require_user()?;
     let latest = ctx
         .db
         .query::<Mention>()

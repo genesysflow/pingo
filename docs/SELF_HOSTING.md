@@ -123,9 +123,10 @@ combine them.
 PINGO_REGISTRATION=invite
 ```
 
-New accounts can only get in through an invite link. The sign-up page tells visitors so, and an account created
-any other way sees a "You need an invite" screen where it can paste a link. On a brand-new server, the first
-account is let in so it can create the first space; after that, everyone needs an invite.
+New accounts can only be created through a valid invite link; password, magic-link and OAuth sign-ups without
+one are rejected before an account is created. On a brand-new server, the first account is let in so it can
+create the first space; after that, everyone needs an invite. Existing accounts without space membership see
+a "You need an invite" screen where they can paste a link.
 
 People who already belong to a space keep their access when you switch an existing server to invite-only. If
 someone leaves every space, they need a new invite.
@@ -137,7 +138,7 @@ PINGO_ALLOWED_EMAILS=ada@example.com, grace@example.com, @mycompany.com
 ```
 
 Entries are full addresses or whole domains (`@mycompany.com` or `mycompany.com`; subdomains are not included).
-Anyone else who signs up sees "This address can't join", and invites don't override the list.
+Other addresses are rejected before an account is created, and invites don't override the list.
 
 The address must be confirmed: password sign-ups get a code by email, so **set up SMTP** when you use this.
 GitHub, Google and Discord sign-ins, and magic links, confirm the address on their own.

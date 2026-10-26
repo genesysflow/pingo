@@ -5,6 +5,8 @@ const messages: Record<string, string> = {
   invalid_name: 'Choose a name between 1 and 32 characters.',
   name_taken: 'That name is already in use. Try another.',
   invalid_invite: 'This invite has expired or reached its limit. Ask for a fresh one.',
+  invite_required: 'Open an invite link to create an account on this server.',
+  email_not_allowed: 'This email address is not approved for this server. Use an approved address.',
   rate_limited: 'A little too fast. Please try again in a moment.',
   too_long: 'That is too long. Messages can contain up to 4,000 characters.',
   ConnectionLost: 'Connection lost. Reconnecting…',

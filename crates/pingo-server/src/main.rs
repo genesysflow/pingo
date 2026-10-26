@@ -29,7 +29,10 @@ use rxferrix::RxFerrix;
 use rxferrix::auth::{AuthConfig, Discord, GitHub, Google};
 
 fn mount_media(app: RxFerrix) -> rxferrix::Result<RxFerrix> {
-    Ok(app.app_routes(media::Media::from_env()?.router()))
+    let media = media::Media::from_env()?;
+    Ok(app
+        .app_routes(media.clone().router())
+        .on_start(move |app| async move { media.start(app).await }))
 }
 
 fn main() -> rxferrix::Result<()> {
@@ -64,6 +67,7 @@ fn main() -> rxferrix::Result<()> {
         .oauth(GitHub::from_env())
         .oauth(Google::from_env())
         .oauth(Discord::from_env())
+        .before_sign_up(access::before_sign_up)
         // The web app is served from the same origin in production, so the public URL is the
         // redirect target unless the UI runs elsewhere (the Vite dev server).
         .redirect_url(
@@ -75,6 +79,7 @@ fn main() -> rxferrix::Result<()> {
         .dev_mailer(dev::inbox());
     let mut app = RxFerrix::new()
         .auth(auth)
+        .guard(access::guard)
         .cron::<typing::prune>("prune-typing", "0 0 * * * *", ())
         .cron::<presence::prune>("prune-presence", "0 0 * * * *", ())
         .cron::<voice::prune>("prune-voice", "0 0 * * * *", ());

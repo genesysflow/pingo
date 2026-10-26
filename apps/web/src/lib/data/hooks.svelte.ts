@@ -156,7 +156,7 @@ export function useAuth(_options: { client?: RxFerrixClient } = {}): UseAuthResu
       return false;
     },
     signIn,
-    async signUp(args: { email: string; password: string; name?: string }) {
+    async signUp(args: { email: string; password: string; name?: string; redirectTo?: string }) {
       if (args.name) backend.state.people[0].name = args.name;
       await signIn(args);
       return { verificationRequired: false };

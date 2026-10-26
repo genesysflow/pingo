@@ -3,7 +3,7 @@ use crate::model::*;
 use rxferrix::prelude::*;
 #[mutation]
 pub async fn toggle(ctx: &MutationCtx, message: Id<Message>, emoji: String) -> Result<()> {
-    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
+    let user = ctx.auth.require_user()?;
     let m = get_message(&ctx.db, message, user).await?;
     require_room(&ctx.db, m.room, user, Perm::SEND).await?;
     if m.deleted {

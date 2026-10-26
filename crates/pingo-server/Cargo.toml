@@ -16,6 +16,7 @@ pingo-proto = { workspace = true }
 rxferrix = { workspace = true }
 bitflags = "2"
 tracing = { workspace = true }
+url = "2"
 
 [dev-dependencies]
 pingo-media = { path = "../pingo-media" }

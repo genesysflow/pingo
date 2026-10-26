@@ -50,18 +50,26 @@ signing and verification and logs a warning. Tokens expire after 60 seconds and 
 speak, video and screen-share capabilities; members with VIEW alone may listen. Send the token as the first
 WebSocket JSON message (`Join`), as specified by `pingo-proto`.
 
-RxFerrix owns the Tokio runtime and supplies its running `App` to the `/rtc` handler. A shared Tokio `OnceCell`
-initializes the SFU on the **first `/rtc` request**; simultaneous requests wait for the same initialization.
-Before binding UDP or admitting anyone, internal `voice:reset` deletes crash residue in transactions of at most
-500 rows. Until that first request, old rows may still appear in queries. Failed initialization returns HTTP
-503 and may be retried by a later request. No custom startup HTTP endpoint is exposed.
+RxFerrix 0.7's `on_start` hook starts the SFU **before HTTP listens or the scheduler starts**. Internal
+`voice:reset` deletes crash residue in transactions of at most 500 rows, then media binds UDP. A bind failure
+fails server startup rather than leaving a healthy-looking HTTP server without working media. `/rtc` only
+dispatches to the already-running SFU; it never initializes services or sweeps state.
 
 State and leave hooks call the typed internal `voice::set_state` and `voice::left` mutations. The SFU executes
 them serially on its separate hook worker; the backend tries each write up to three times (100/200 ms backoff,
 four-second total budget), logging failures without blocking media or spawning unordered writes. RxFerrix's
-close notification requests SFU shutdown and leave-hook draining. Hook delivery remains in memory: a process
+close notification requests SFU shutdown and leave-hook draining through `App::spawn`. RxFerrix waits up to
+10 seconds for tracked services before closing the database. Hook delivery remains in memory: a process
 crash or exhausted write retries are repaired by the next process's initialization sweep and the existing
 stale-row cron.
+
+Registration uses `AuthConfig::before_sign_up` to refuse invalid sign-ups without creating accounts and
+`RxFerrix::guard` to enforce admission centrally on public client calls, including subscribed-query reruns.
+Functions retain ordinary `ctx.auth.require_user()` and resource-permission checks, not per-function admission
+wrappers. Invite-only sign-ups pass their `/invite/<code>` URL through `redirectTo`; accepting the invite after
+sign-in still consumes it transactionally. Policy reads remain reactive through RxFerrix Environment, with
+process-environment fallbacks. Static builder allowlists would lose this live-update behavior, so email/domain
+matching remains part of Pingo's policy. Internal/server calls bypass the guard; the SFU retains token admission.
 
 Seed a development server with `devApi.dev.seed` (HTTP function path `dev:seed`, empty args). It creates a demo
 space, general and design chat rooms, a Lounge, three sample users, six messages including a thread, and two
@@ -72,8 +80,8 @@ the space; an anonymous seed uses the first demo user. Demo users can sign in th
 
 ```sh
 cargo test -p pingo-server -p pingo-sfu
-cargo clippy --workspace --all-targets -- -D warnings
-cargo fmt -p pingo-server -p pingo-sfu --check
+cargo clippy -p pingo-server --all-targets -- -D warnings
+cargo fmt -p pingo-server --check
 ```
 
 The backend suite includes in-process full-router tests with temporary data directories, dev mode, two users
@@ -83,11 +91,12 @@ and room query updates, mute/deafen, disconnect and runtime-close cleanup. Addit
 secret twice, reject old/wrong signatures, exercise empty/removed keys and confirm production fails closed.
 The SFU suite independently covers signaling, data channels, track mapping and video forwarding.
 
-Verified on 2026-10-23: **20 server tests and 15 SFU tests pass**, workspace clippy passes with warnings denied,
-and both changed crates pass formatting checks. Workspace-wide formatting still reports pre-existing differences
-in `pingo-proto`, outside this integration's scope. A separate `cargo run ... serve --dev` smoke check used HTTP
-magic-link sign-in, `voice.join`, a real `/rtc` upgrade and join/leave query checks. SIGTERM also closed an active
-media WebSocket; read-only SQLite inspection after exit confirmed zero voice rows.
+Verified on 2026-10-26 with RxFerrix 0.7.0: **40 server tests, 18 SFU tests and 40 web unit tests pass**.
+Server clippy passes with warnings denied, and formatting passes. Browser regressions pass for password sign-up,
+invite acceptance, live messaging, history, real audio and screen sharing; the sign-up tests also pass with
+`PINGO_REGISTRATION=invite`. Binary smoke checks confirm that an occupied UDP port fails startup through
+`on_start`, media starts before HTTP health succeeds without a `/rtc` request, and SIGTERM exits cleanly.
+Codegen reports no changes to the public API shapes.
 
 ## Generated api.ts function list
 
@@ -110,7 +119,7 @@ devApi.dev:    last_code, seed
 
 Internal mutations, including `voice:setState` and `voice:left`, are intentionally absent from client codegen.
 Rust SFU integration may call `app.mutation::<voice::set_state>(...)` using its snake_case alias, and
-`app.mutation::<voice::left>(...)`. RxFerrix 0.6.1 preserves function names (only argument/field names are
+`app.mutation::<voice::left>(...)`. RxFerrix 0.7 preserves function names (only argument/field names are
 converted automatically), so contracted camelCase entry points use locally allowed camelCase Rust names.
 
 ## Integration notes and limits

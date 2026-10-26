@@ -1,18 +1,15 @@
-//! RxFerrix owns the runtime; the first media request hands us its running App.
+//! Media starts before HTTP admission and drains its hooks before RxFerrix closes the database.
 use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::sync::Arc;
+use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use async_trait::async_trait;
 use axum::Router;
-use axum::extract::{Request, State};
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
+use axum::extract::Request;
 use axum::routing::get;
 use pingo_sfu::{MediaSecretProvider, Sfu, SfuConfig, VoiceHooks};
 use rxferrix::App;
-use tokio::sync::OnceCell;
 use tower::ServiceExt;
 
 use crate::voice;
@@ -20,14 +17,14 @@ use crate::voice;
 #[derive(Clone)]
 pub struct Media {
     config: SfuConfig,
-    sfu: Arc<OnceCell<Sfu>>,
+    sfu: Arc<OnceLock<Sfu>>,
 }
 
 impl Media {
     pub fn new(config: SfuConfig) -> Self {
         Self {
             config,
-            sfu: Arc::new(OnceCell::new()),
+            sfu: Arc::new(OnceLock::new()),
         }
     }
 
@@ -54,45 +51,36 @@ impl Media {
         }))
     }
 
-    async fn start(&self, app: App) -> rxferrix::Result<&Sfu> {
-        self.sfu
-            .get_or_try_init(|| async {
-                // No new session can race this sweep. Multiple initial HTTP requests
-                // share the cell; failed initialization can be retried by the next one.
-                while app.mutation::<voice::reset>(()).await? == 500 {}
-                let backend = Arc::new(Backend(app.clone()));
-                let sfu =
-                    Sfu::start_with_secret_provider(self.config.clone(), backend.clone(), backend)
-                        .await?;
-                tracing::info!(udp = %sfu.udp_addr(), "media server started");
-                let shutdown = sfu.clone();
-                tokio::spawn(async move {
-                    app.closed().await;
-                    shutdown.shutdown().await;
-                });
-                Ok(sfu)
-            })
-            .await
+    pub async fn start(&self, app: App) -> rxferrix::Result<()> {
+        while app.mutation::<voice::reset>(()).await? == 500 {}
+        let backend = Arc::new(Backend(app.clone()));
+        let sfu =
+            Sfu::start_with_secret_provider(self.config.clone(), backend.clone(), backend).await?;
+        tracing::info!(udp = %sfu.udp_addr(), "media server started");
+        if self.sfu.set(sfu.clone()).is_err() {
+            sfu.shutdown().await;
+            return Err(rxferrix::Error::msg("media server already started"));
+        }
+        let closed = app.clone();
+        app.spawn(async move {
+            closed.closed().await;
+            sfu.shutdown().await;
+        });
+        Ok(())
     }
 
     pub fn router(self) -> Router<App> {
         Router::new().route(
             "/rtc",
-            get(move |State(app): State<App>, request: Request| {
-                let media = self.clone();
-                async move { media.request(app, request).await }
+            get(move |request: Request| {
+                let sfu = self
+                    .sfu
+                    .get()
+                    .expect("media starts before HTTP listens")
+                    .clone();
+                async move { sfu.router::<()>().oneshot(request).await.unwrap() }
             }),
         )
-    }
-
-    async fn request(&self, app: App, request: Request) -> Response {
-        match self.start(app).await {
-            Ok(sfu) => sfu.router::<()>().oneshot(request).await.unwrap(),
-            Err(error) => {
-                tracing::error!(%error, "cannot start media server");
-                (StatusCode::SERVICE_UNAVAILABLE, "media unavailable").into_response()
-            }
-        }
     }
 }
 

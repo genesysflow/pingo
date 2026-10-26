@@ -74,7 +74,7 @@ pub async fn reset(ctx: &MutationCtx) -> Result<u32> {
 
 #[mutation]
 pub async fn join(ctx: &MutationCtx, room: Id<Room>) -> Result<JoinResult> {
-    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
+    let user = ctx.auth.require_user()?;
     let (_, perms) = require_room(&ctx.db, room, user, Perm::VIEW).await?;
     let secret = media_secret(&ctx.env, ctx.is_dev()).await?;
     let (name, color, _) = crate::profiles::identity(&ctx.db, user).await?;
@@ -123,13 +123,7 @@ pub async fn views(ctx: &QueryCtx, room: Id<Room>) -> Result<Vec<VoiceParticipan
 }
 #[query]
 pub async fn participants(ctx: &QueryCtx, room: Id<Room>) -> Result<Vec<VoiceParticipant>> {
-    require_room(
-        &ctx.db,
-        room,
-        crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?,
-        Perm::VIEW,
-    )
-    .await?;
+    require_room(&ctx.db, room, ctx.auth.require_user()?, Perm::VIEW).await?;
     views(ctx, room).await
 }
 #[internal_mutation]

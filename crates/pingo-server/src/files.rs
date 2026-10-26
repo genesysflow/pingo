@@ -5,12 +5,12 @@ use rxferrix::storage::StoredFile;
 #[mutation]
 #[allow(non_snake_case)]
 pub async fn generateUploadUrl(ctx: &MutationCtx) -> Result<String> {
-    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
+    let user = ctx.auth.require_user()?;
     rate_limit(ctx, user, "upload", 30).await?;
     ctx.storage.generate_upload_url().await
 }
 pub async fn check_owned(ctx: &MutationCtx, file: Id<StoredFile>) -> Result<()> {
-    let user = crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?;
+    let user = ctx.auth.require_user()?;
     let f = ctx
         .storage
         .get_metadata(file)

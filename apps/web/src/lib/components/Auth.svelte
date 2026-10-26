@@ -71,7 +71,12 @@
         sent = true;
       } else {
         if (signup) {
-          const result = await auth.signUp({ email, password, name });
+          const result = await auth.signUp({
+            email,
+            password,
+            name,
+            redirectTo: inviteCode ? location.href : location.origin,
+          });
           if (result.verificationRequired) {
             error = 'Check your email to verify your address, then sign in.';
             return;

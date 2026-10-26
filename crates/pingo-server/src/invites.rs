@@ -17,6 +17,21 @@ async fn find(db: &rxferrix::QueryDb, code: String) -> Result<Option<Doc<Invite>
         .first()
         .await
 }
+pub async fn require_valid(db: &rxferrix::QueryDb, code: String, now: f64) -> Result<Doc<Invite>> {
+    let invite = find(db, code)
+        .await?
+        .filter(|invite| valid(invite, now))
+        .ok_or_else(|| {
+            user_error(
+                "invalid_invite",
+                "This invite expired or has no uses remaining",
+            )
+        })?;
+    if db.get(invite.space).await?.is_none() {
+        return Err(user_error("invalid_invite", "This space no longer exists"));
+    }
+    Ok(invite)
+}
 #[mutation]
 pub async fn create(
     ctx: &MutationCtx,
@@ -24,13 +39,7 @@ pub async fn create(
     max_uses: Option<u32>,
     expires_in_hours: Option<f64>,
 ) -> Result<String> {
-    require_perm(
-        &ctx.db,
-        space,
-        crate::access::require_user(&ctx.auth, &ctx.env, &ctx.db).await?,
-        Perm::INVITE,
-    )
-    .await?;
+    require_perm(&ctx.db, space, ctx.auth.require_user()?, Perm::INVITE).await?;
     if max_uses == Some(0)
         || expires_in_hours.is_some_and(|h| !h.is_finite() || h <= 0.0 || h > 8760.0)
     {
@@ -84,20 +93,8 @@ pub async fn preview(ctx: &QueryCtx, code: String) -> Result<Option<Preview>> {
 }
 #[mutation]
 pub async fn accept(ctx: &MutationCtx, code: String) -> Result<Id<Space>> {
-    // The way into an invite-only server, so only the email rule applies here.
-    let user = crate::access::require_invitable(&ctx.auth, &ctx.env, &ctx.db).await?;
-    let i = find(&ctx.db, code)
-        .await?
-        .filter(|i| valid(i, ctx.now()))
-        .ok_or_else(|| {
-            user_error(
-                "invalid_invite",
-                "This invite expired or has no uses remaining",
-            )
-        })?;
-    if ctx.db.get(i.space).await?.is_none() {
-        return Err(user_error("invalid_invite", "This space no longer exists"));
-    }
+    let user = ctx.auth.require_user()?;
+    let i = require_valid(&ctx.db, code, ctx.now()).await?;
     if member(&ctx.db, i.space, user).await?.is_none() {
         ctx.db
             .insert(SpaceMember {

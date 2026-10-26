@@ -33,7 +33,7 @@ final summary.
 
 ## RxFerrix reference
 
-- RxFerrix 0.6.1 from crates.io; the client packages are `@rxferrix/client` and `@rxferrix/svelte` 0.6.1.
+- RxFerrix 0.7.0 from crates.io; the client packages are `@rxferrix/client` and `@rxferrix/svelte` 0.7.0.
 - Source checkout for reading: `/tmp/rxf-src/rxferrix`. If it's missing, run
   `git clone --depth 1 https://github.com/genesysflow/rxferrix /tmp/rxf-src/rxferrix`.
 - What to read there:
