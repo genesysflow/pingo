@@ -7,10 +7,10 @@ license.workspace = true
 publish.workspace = true
 
 [features]
-default = ["webrtc-apm"]
+default = ["webrtc-apm", "deepfilter"]
 webrtc-apm = ["dep:webrtc-audio-processing"]
-# The published deep_filter crate has DSP primitives but no inference/model loader.
-deepfilter = ["dep:deep_filter"]
+# DeepFilterNet3 noise suppression; without it the pipeline falls back to RNNoise.
+deepfilter = ["dep:pingo-denoise"]
 linux-capture = ["dep:ashpd", "dep:pipewire"]
 vp8 = ["dep:ffmpeg-next"]
 vaapi = ["dep:ffmpeg-next"]
@@ -32,7 +32,7 @@ rubato = { version = "0.16", default-features = false }
 nnnoiseless = { version = "0.5", default-features = false }
 opus = "0.3"
 webrtc-audio-processing = { version = "2.1", features = ["bundled"], optional = true }
-deep_filter = { version = "0.2.5", optional = true }
+pingo-denoise = { workspace = true, optional = true }
 openh264 = "0.9.9"
 yuvutils-rs = "0.8"
 fast_image_resize = "6.1"

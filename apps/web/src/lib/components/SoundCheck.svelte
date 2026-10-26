@@ -5,6 +5,7 @@
   import Modal from './Modal.svelte';
   import { nativeDesktop } from '../desktop/bridge';
   import NativeSoundCheck from '../desktop/NativeSoundCheck.svelte';
+  import { Microphone } from '../call/microphone';
   let { call, close, complete }: { call: CallController; close: () => void; complete: () => void } = $props();
   let step = $state(0),
     devices = $state<MediaDeviceInfo[]>([]),
@@ -18,7 +19,7 @@
     remaining = $state(5),
     recordingUrl = $state(''),
     error = $state('');
-  let stream: MediaStream | undefined,
+  let microphone: Microphone | undefined,
     context: AudioContext | undefined,
     recorder: MediaRecorder | undefined,
     animation = 0,
@@ -34,8 +35,8 @@
   }
   function stopStream() {
     cancelAnimationFrame(animation);
-    stream?.getTracks().forEach((t) => t.stop());
-    stream = undefined;
+    microphone?.stop();
+    microphone = undefined;
     if (context) void context.close();
     context = undefined;
     testing = false;
@@ -47,19 +48,13 @@
     try {
       if (!navigator.mediaDevices?.getUserMedia)
         throw new Error('Microphone access needs a supported browser on localhost or HTTPS.');
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          deviceId: mic !== 'default' ? { exact: mic } : undefined,
-          echoCancellation: !studio,
-          noiseSuppression: !studio && suppression !== 'Off',
-          autoGainControl: !studio,
-        },
-      });
+      // The same chain a call uses, so the meter and the clip sound like what others hear.
+      microphone = await Microphone.open({ microphone: mic, suppression, studio });
       await enumerate();
       context = new AudioContext();
       const analyser = context.createAnalyser();
       analyser.fftSize = 256;
-      context.createMediaStreamSource(stream).connect(analyser);
+      context.createMediaStreamSource(microphone.stream).connect(analyser);
       const data = new Uint8Array(analyser.fftSize);
       testing = true;
       const frame = () => {
@@ -80,15 +75,15 @@
     }
   }
   async function record() {
-    if (!stream) await testMic();
-    if (!stream) return;
+    if (!microphone) await testMic();
+    if (!microphone) return;
     if (!window.MediaRecorder) {
       error = 'Recording isn’t supported in this browser. The live meter still works.';
       return;
     }
     if (recordingUrl) URL.revokeObjectURL(recordingUrl);
     const chunks: BlobPart[] = [];
-    recorder = new MediaRecorder(stream);
+    recorder = new MediaRecorder(microphone.stream);
     recorder.ondataavailable = (e) => {
       if (e.data.size) chunks.push(e.data);
     };

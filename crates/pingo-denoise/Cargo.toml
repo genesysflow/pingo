@@ -1,0 +1,41 @@
+[package]
+name = "pingo-denoise"
+description = "DeepFilterNet3 noise suppression shared by the native media engine and the browser (WASM)"
+edition.workspace = true
+version.workspace = true
+license = "MIT OR Apache-2.0"
+publish.workspace = true
+
+[lib]
+crate-type = ["rlib", "cdylib"]
+
+[dependencies]
+thiserror.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+itertools = "0.12"
+num-complex = "0.4"
+realfft = "3.1"
+ndarray = "0.15"
+rust-ini = "0.21"
+flate2 = "1.0.24"
+tar = "0.4.38"
+# The vendored runner (src/df) was written against tract 0.21.4; later 0.21.x
+# releases moved to ndarray 0.16 and renamed `symbol_table`, so pin exactly.
+tract-core = "=0.21.4"
+tract-onnx = "=0.21.4"
+tract-pulse = "=0.21.4"
+tract-hir = "=0.21.4"
+tract-data = "=0.21.4"
+tract-linalg = "=0.21.4"
+tract-nnef = "=0.21.4"
+tract-onnx-opl = "=0.21.4"
+tract-pulse-opl = "=0.21.4"
+
+[dev-dependencies]
+hound = "3.5"
+
+# tract's ONNX random ops link getrandom; inference never calls them. "custom"
+# lets the browser build link without wasm-bindgen (see src/wasm.rs).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.2", features = ["custom"] }

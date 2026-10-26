@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 0.0.0.0",
+    "dev": "sh scripts/build-denoise.sh --optional && vite --host 0.0.0.0",
     "check": "svelte-check --tsconfig ./tsconfig.json",
     "test": "vitest run",
-    "build": "vite build",
+    "build": "sh scripts/build-denoise.sh && vite build",
+    "denoise": "sh scripts/build-denoise.sh",
     "test:e2e": "playwright test"
   },
   "dependencies": {

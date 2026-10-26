@@ -9,6 +9,8 @@ export interface AudioSettings {
   echoCancel?: boolean;
   pushToTalk?: boolean;
 }
+/** Which suppressor is actually cleaning the microphone. */
+export type NoiseEngine = 'DeepFilterNet' | 'Browser' | 'Off';
 export interface CallMedia {
   mid: string;
   user: string;
@@ -50,6 +52,7 @@ export interface CallController {
   }[];
   readonly volumes: Record<string, { volume: number; pan: number }>;
   readonly audio: AudioSettings;
+  readonly noiseEngine: NoiseEngine;
   readonly shareMode: 'Text' | 'Motion';
   join(room: string, name: string): Promise<void>;
   leave(): void;
@@ -105,6 +108,7 @@ export class CallState implements CallController {
     suppression: 'Gentle',
     studio: false,
   });
+  noiseEngine = $state<NoiseEngine>('DeepFilterNet');
   shareMode = $state<'Text' | 'Motion'>('Text');
   private timer: ReturnType<typeof setInterval>;
   private seq = 0;

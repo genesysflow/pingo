@@ -72,7 +72,7 @@ fn rnnoise_scaling_suppression_and_off_bypass() {
             ((seed as u32 as f64 / u32::MAX as f64) as f32 - 0.5) * 0.04
         });
         let input = rms(&frame);
-        let probability = suppressor.process(&mut frame, NoiseLevel::Strong);
+        let probability = suppressor.process_with_probability(&mut frame, NoiseLevel::Strong);
         assert!((0.0..=1.0).contains(&probability));
         assert!(frame.iter().all(|v| v.is_finite() && v.abs() < 1.0));
         if frame_index > 50 {
@@ -315,6 +315,51 @@ fn receive_mix_runtime_volume_and_quality_labels() {
 
 #[cfg(feature = "deepfilter")]
 #[test]
-fn deepfilter_stub_is_explicit() {
-    assert!(pingo_media::audio::denoise::deepfilter().is_err());
+fn deepfilter_is_the_default_suppressor() {
+    use pingo_media::audio::denoise::{DeepFilter, default_suppressor};
+    let mut suppressor = default_suppressor();
+    assert_eq!(
+        suppressor.delay_samples(),
+        1440,
+        "DeepFilterNet3, not the RNNoise fallback"
+    );
+    let original = tone::<480>(300.0, 0.1, 0);
+    let mut frame = original;
+    suppressor.process(&mut frame, NoiseLevel::Off);
+    assert_eq!(frame, original);
+
+    let mut seed = 71u64;
+    let mut noise = || -> [f32; 480] {
+        std::array::from_fn(|_| {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            ((seed as u32 as f64 / u32::MAX as f64) as f32 - 0.5) * 0.04
+        })
+    };
+    for (level, minimum, maximum) in [
+        (NoiseLevel::Gentle, 12.0, 19.0),
+        (NoiseLevel::Strong, 35.0, f64::MAX),
+    ] {
+        let mut suppressor = DeepFilter::new().unwrap();
+        let (mut input, mut output) = (0.0f64, 0.0f64);
+        for index in 0..300 {
+            let mut frame = noise();
+            let before = frame;
+            suppressor.process(&mut frame, level);
+            if index >= 100 {
+                input += before.iter().map(|v| (*v as f64).powi(2)).sum::<f64>();
+                output += frame.iter().map(|v| (*v as f64).powi(2)).sum::<f64>();
+            }
+        }
+        let reduction = 10.0 * (input / output).log10();
+        assert!(
+            (minimum..=maximum).contains(&reduction),
+            "{level:?} reduced noise by {reduction:.1} dB"
+        );
+    }
+
+    let mut send = SendPipeline::new(AudioSettings::default()).unwrap();
+    let rnnoise_budget = 10.0 + 20.0 + 10.0 + 10.0;
+    assert!(send.latency_budget_ms(0.0).unwrap() >= rnnoise_budget + 20.0);
 }

@@ -237,7 +237,9 @@
             <p>
               {call.audio.studio
                 ? 'Studio mode · Every detail preserved'
-                : `${call.audio.suppression} noise suppression · Voice mode`}
+                : call.audio.suppression !== 'Off' && call.noiseEngine === 'Browser'
+                  ? `${call.audio.suppression} noise suppression · Using your browser’s basic filter`
+                  : `${call.audio.suppression} noise suppression · Voice mode`}
             </p>
           </div>
           <button class="button soft" onclick={sound}>Sound check<Icon name="arrowRight" size={15} /></button>

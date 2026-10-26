@@ -12,6 +12,7 @@ server↔SFU↔client contract. Don't change either without updating every side 
 | `crates/pingo-server` | RxFerrix app: tables, queries, mutations, auth; mounts the SFU at `/rtc` | backend |
 | `crates/pingo-sfu` | str0m-based SFU library and standalone binary | sfu |
 | `crates/pingo-media` | Native media engine for the desktop app (audio pipeline, Opus, jitter buffer, capture) | media |
+| `crates/pingo-denoise` | DeepFilterNet3 noise suppression (vendored runner + model), native and WASM for the browser | media |
 | `apps/web` | Svelte 5 + Vite UI (shared by web and desktop) | web |
 | `apps/desktop` | Tauri 2 shell using `pingo-media` | later |
 
@@ -24,6 +25,8 @@ final summary.
 - Rust: if `cargo` fails with a mise "No version is set" error, run `export PATH="$HOME/.cargo/bin:$PATH"` first
   (rustc 1.99, edition 2024).
 - JS: `bun` 1.4. No pnpm.
+- WASM: browser noise suppression needs `rustup target add wasm32-unknown-unknown`; `bun run denoise` in
+  `apps/web` builds it.
 - System libraries available: libopus, alsa, libpipewire-0.3, webkit2gtk-4.1.
 - The machine is shared by several builds at once. `.cargo/config.toml` caps cargo at 6 jobs. Don't raise it.
 - `.cargo/config.toml` also sets `LIBSQLITE3_FLAGS`, which RxFerrix needs. Keep it.

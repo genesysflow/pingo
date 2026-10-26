@@ -1,5 +1,19 @@
 import { test, expect, type Page } from '@playwright/test';
 import { signup, createSpace, invite, accept } from './helpers';
+import { fakeMicrophone, speech } from './fake-audio';
+
+// Calls run with the default Gentle noise suppression, so the microphone must sound like a voice.
+test.use({
+  launchOptions: {
+    args: [
+      '--use-fake-ui-for-media-stream',
+      '--use-fake-device-for-media-stream',
+      `--use-file-for-fake-audio-capture=${fakeMicrophone('speech', 6, speech())}`,
+      '--autoplay-policy=no-user-gesture-required',
+      '--allow-loopback-in-peer-connection',
+    ],
+  },
+});
 
 declare global {
   interface Window {
@@ -75,6 +89,11 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     bob = await b.newPage();
   const errors: string[] = [];
   for (const p of [alice, bob]) p.on('pageerror', (e) => errors.push(e.message));
+  // Calls must run the DeepFilterNet worklet, not silently fall back to the browser's filter.
+  for (const p of [alice, bob])
+    p.on('console', (m) => {
+      if (/DeepFilterNet|Noise suppression stopped/.test(m.text())) errors.push(m.text());
+    });
   try {
     await signup(alice, 'CallAlice');
     await signup(bob, 'CallBob');
@@ -86,8 +105,8 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     await expect(alice.locator('.stage-tile')).toHaveCount(2);
     await expect.poll(() => inbound(alice, 'audio'), { timeout: 25_000 }).toBeGreaterThan(0);
     await expect.poll(() => inbound(bob, 'audio'), { timeout: 25_000 }).toBeGreaterThan(0);
-    // Chromium's fake microphone beeps briefly once per second. Playwright's default
-    // visibility backoff reaches one second and can sample only the silent gaps.
+    // Speaking toggles with each syllable. Playwright's default visibility backoff
+    // reaches one second and can keep sampling the gaps between them.
     await expect
       .poll(() => bob.locator('.stage-tile.speaking').filter({ hasText: 'CallAlice' }).isVisible(), {
         intervals: [50],

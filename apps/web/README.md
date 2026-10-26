@@ -63,8 +63,17 @@ admission. Only SFU hooks update durable voice state; the sidebar observes `room
 Opus negotiates FEC/DTX and retains the browser's RFC 6464 audio-level extension. Studio rooms request stereo,
 256 kbps Opus, and disable microphone echo cancellation, noise suppression, and automatic gain. Web Audio routes
 remote audio through per-user gain/pan and applies the Lounge's pure distance mix. The sound check enumerates
-real devices, meters microphone input, records locally for playback, and saves device preferences. Browser
-noise suppression uses the browser's boolean processing control; Gentle/Strong do not install a separate DSP.
+real devices, meters microphone input, records locally for playback, and saves device preferences.
+
+Noise suppression runs DeepFilterNet3, the same model and settings as the desktop app (`crates/pingo-denoise`
+built to WASM). `Microphone` (`src/lib/call/microphone.ts`) captures with the browser's own suppressor off, then
+routes the microphone through an AudioWorklet (`denoise-worklet.ts`) on a dedicated 48 kHz `AudioContext`, so the
+model's start-up never stalls call playback. It adds 40 ms (one 10 ms hop of re-blocking plus the model's 30 ms).
+Gentle/Strong changes apply live without reopening the microphone. The 18 MB module (10 MB gzipped) is fetched
+only when a call or sound check starts with suppression on. If WASM, AudioWorklet or the file is unavailable, the
+call falls back to the browser's `noiseSuppression` and Settings says so. Build it with `bun run denoise`
+(needs `rustup target add wasm32-unknown-unknown`). `bun run dev` builds it when it can, and `bun run build`
+requires it. Desktop builds (`TAURI_ENV_PLATFORM`) leave it out because the app suppresses natively.
 
 Mute/deafen use `SetState`. Speaking, reactions, hands, pointers, and strokes use the `pingo` data channel.
 Pointers and drawings are scoped to the translated screen mid. Quality uses recent loss, jitter, and RTT from
