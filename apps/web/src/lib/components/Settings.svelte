@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { ACCENTS } from '../theme';
   import { errorMessage } from '../data/errors';
   import { untrack } from 'svelte';
   import { api, useQuery, useMutation, useAuth, uploadFile, type PresenceStatus } from '../data';
@@ -73,7 +74,7 @@
         await updateProfile({ name: profileName, color: profileColor });
         await status({ status: me.data?.status ?? 'online', text: statusText });
       } else if (tab === 'Space') await updateSpace({ space, name: spaceName, accent });
-      notice('A little more you. Changes saved.');
+      notice('Saved.');
     } catch (e) {
       error = errorMessage(e);
     }
@@ -119,9 +120,7 @@
 
 <div class="settings-view">
   <div class="settings-header">
-    <button class="text-button" onclick={back}><Icon name="back" size={15} />Back to your people</button>
-    <h1>Make yourself at home.</h1>
-    <p>A few little things, just the way you like them.</p>
+    <button class="text-button" onclick={back}><Icon name="back" size={14} />Back</button>
   </div>
   <div class="settings-layout">
     <nav class="settings-nav" aria-label="Settings sections">
@@ -135,12 +134,9 @@
     <div class="settings-content">
       <h2>{tab}</h2>
       {#if nativeDesktop && tab === 'Keyboard shortcuts'}<DesktopSettings />{/if}
-      {#if tab === 'Appearance'}<p class="settings-description">
-          A space that feels like yours. Easy on the eyes, easy to settle into.
-        </p>
-        <h3>Your light</h3>
+      {#if tab === 'Appearance'}<h3>Theme</h3>
         <div class="theme-options">
-          {#each [{ id: 'light', name: 'Daylight', icon: 'sun' as const }, { id: 'dark', name: 'After hours', icon: 'moon' as const }, { id: 'contrast', name: 'High contrast', icon: 'contrast' as const }] as t}<button
+          {#each [{ id: 'light', name: 'Light', icon: 'sun' as const }, { id: 'dark', name: 'Dark', icon: 'moon' as const }, { id: 'contrast', name: 'High contrast', icon: 'contrast' as const }] as t}<button
               class:chosen={theme === t.id}
               onclick={() => setTheme(t.id)}
               aria-pressed={theme === t.id}
@@ -153,7 +149,7 @@
               ></button
             >{/each}
         </div>
-        <h3>A little breathing room</h3>
+        <h3>Density</h3>
         <div class="density-options">
           {#each ['comfortable', 'compact'] as d}<button
               class:chosen={density === d}
@@ -161,17 +157,14 @@
               onclick={() => setDensity(d)}
               ><Icon name={d === 'comfortable' ? 'expand' : 'collapse'} size={20} /><span
                 ><strong>{d === 'comfortable' ? 'Comfortable' : 'Compact'}</strong><small
-                  >{d === 'comfortable'
-                    ? 'Space for things to breathe.'
-                    : 'A little more on your screen.'}</small
+                  >{d === 'comfortable' ? 'Larger rows and avatars' : 'More messages on screen'}</small
                 ></span
               ><span class="radio-circle">{density === d ? '●' : ''}</span></button
             >{/each}
         </div>
-        <h3>This space’s personality</h3>
-        <p class="settings-description">A hint of color, wherever you are in {info.data?.name}.</p>
+        <h3>Accent for {info.data?.name}</h3>
         <div class="color-swatches">
-          {#each ['#8064cc', '#4b9472', '#be7850', '#c46782', '#4f85b4', '#aa8a38'] as c}<button
+          {#each ACCENTS as c}<button
               style:--swatch={c}
               class:chosen={info.data?.accent === c}
               aria-label={`Set accent ${c}`}
@@ -180,10 +173,7 @@
               >{#if info.data?.accent === c}<Icon name="check" size={18} />{/if}</button
             >{/each}
         </div>
-        <div class="tip">
-          <Icon name="leaf" size={17} />Motion stays gentle. Your system’s reduced motion setting is always
-          respected.
-        </div>
+        <p class="settings-description">Animations follow your system’s reduced-motion setting.</p>
       {:else if tab === 'Profile'}<label class="field"
           >Profile photo<input
             type="file"
@@ -192,7 +182,6 @@
             onchange={(e) => imageUpload(e, 'avatar')}
           /></label
         >
-        <p class="settings-description">A familiar face. A little about you.</p>
         {#if me.data}<div class="profile-preview">
             <Avatar
               url={me.data?.avatarUrl}
@@ -207,11 +196,7 @@
             />
           </div>{/if}<label class="field">Your name<input bind:value={profileName} maxlength="32" /></label
         ><label class="field"
-          >A little status<input
-            bind:value={statusText}
-            maxlength="100"
-            placeholder="What’s your world like today?"
-          /></label
+          >Status<input bind:value={statusText} maxlength="100" placeholder="In a meeting until 3" /></label
         ><label class="field"
           >Presence<select
             value={me.data?.status}
@@ -219,36 +204,35 @@
               status({ status: e.currentTarget.value as PresenceStatus }).catch(
                 (e) => (error = errorMessage(e)),
               )}
-            ><option value="online">Here and happy to chat</option><option value="idle">A little away</option
-            ><option value="dnd">In the flow · do not disturb</option><option value="offline"
-              >Taking a quiet moment</option
-            ></select
+            ><option value="online">Online</option><option value="idle">Away</option><option value="dnd"
+              >Do not disturb</option
+            ><option value="offline">Invisible</option></select
           ></label
         ><button class="button primary" onclick={save}
-          >Save your details<Icon name="check" size={16} /></button
+          >Save profile</button
         >
-      {:else if tab === 'Audio & video'}{#if nativeDesktop}<NativeAudioControls {call} />{/if}<p class="settings-description">
-          Sound like yourself, wherever you are.
-        </p>
-        <div class="audio-summary">
-          <span class="audio-summary-icon"><Icon name="audio" size={32} /></span>
-          <div>
-            <h3>Your sound, in a good place.</h3>
-            <p>
-              {call.audio.studio
-                ? 'Studio mode · Every detail preserved'
-                : call.audio.suppression !== 'Off' && call.noiseEngine === 'Browser'
-                  ? `${call.audio.suppression} noise suppression · Using your browser’s basic filter`
-                  : `${call.audio.suppression} noise suppression · Voice mode`}
-            </p>
-          </div>
-          <button class="button soft" onclick={sound}>Sound check<Icon name="arrowRight" size={15} /></button>
+      {:else if tab === 'Audio & video'}{#if nativeDesktop}<NativeAudioControls {call} />{/if}<div class="audio-summary">
+          <dl>
+            <div><dt>Mode</dt><dd>{call.audio.studio ? 'Studio · stereo, unprocessed' : 'Voice'}</dd></div>
+            <div>
+              <dt>Noise suppression</dt><dd
+                >{call.audio.studio
+                  ? 'Off in Studio'
+                  : call.audio.suppression === 'Off'
+                    ? 'Off'
+                    : call.noiseEngine === 'Browser'
+                      ? `${call.audio.suppression} · browser filter (DeepFilterNet unavailable)`
+                      : `${call.audio.suppression} · DeepFilterNet3`}</dd
+              >
+            </div>
+          </dl>
+          <button class="button" onclick={sound}>Sound check</button>
         </div>
         <label class="setting-toggle"
           ><span
             ><strong>Studio</strong><small
-              >Keep the detail in music and instruments.<br />Disables echo cancellation and automatic
-              processing. Headphones recommended.</small
+              >Stereo at 256 kbps for music and instruments. Turns off echo cancellation, noise suppression and
+              automatic gain. Use headphones.</small
             ></span
           ><input
             type="checkbox"
@@ -268,14 +252,11 @@
               >{/each}
           </div></label
         >
-        <h3>Share a little more.</h3>
         <p class="settings-description">
-          Use the camera and screen controls in your call. Point and draw while someone shares a screen.
+          Gentle limits suppression to 18 dB so the room keeps some air. Strong removes as much noise as
+          possible.
         </p>
-      {:else if tab === 'Notifications'}<p class="settings-description">
-          Stay in the loop, without being pulled out of your flow.
-        </p>
-        {#each [{ label: 'Desktop notifications', detail: 'A gentle heads-up for new activity.', key: 'desktop' }, { label: 'Only the things for you', detail: 'Mentions, replies, and direct messages.', key: 'mentions' }, { label: 'A little sound', detail: 'A soft note when something arrives.', key: 'sounds' }] as setting}<label
+      {:else if tab === 'Notifications'}        {#each [{ label: 'Desktop notifications', detail: 'Show a system notification for new activity.', key: 'desktop' }, { label: 'Only mentions and DMs', detail: 'Mentions, thread replies and direct messages.', key: 'mentions' }, { label: 'Sound', detail: 'Play a short sound when something arrives.', key: 'sounds' }] as setting}<label
             class="setting-toggle"
             ><span><strong>{setting.label}</strong><small>{setting.detail}</small></span><input
               type="checkbox"
@@ -289,20 +270,11 @@
               }}
             /></label
           >{/each}
-        <div class="tip">
-          <Icon name="bell" size={17} />Preferences are saved on this device. Push delivery connects with the
-          backend later.
-        </div>
-      {:else if tab === 'Keyboard shortcuts'}<p class="settings-description">
-          A few little shortcuts. A lot less reaching for the mouse.
-        </p>
-        <div class="shortcut-list">
+        <p class="settings-description">Saved on this device.</p>
+      {:else if tab === 'Keyboard shortcuts'}<div class="shortcut-list">
           {#each shortcuts as [label, keys]}<div><span>{label}</span><kbd>{keys}</kbd></div>{/each}
         </div>
-      {:else if tab === 'Space'}<p class="settings-description">
-          Make this little corner of the internet feel like home.
-        </p>
-        <label class="field"
+      {:else if tab === 'Space'}<label class="field"
           >Space icon<input
             type="file"
             accept="image/*"
@@ -313,7 +285,7 @@
         <label class="field">Space name<input bind:value={spaceName} maxlength="32" /></label><label
           class="field color-field"
           >Accent<input type="color" bind:value={accent} /><span>{accent}</span></label
-        ><button class="button primary" onclick={save}>Save space<Icon name="check" size={15} /></button>
+        ><button class="button primary" onclick={save}>Save space</button>
         {#if leaving}<p>Leave this space?</p>
           <button
             class="button danger"
@@ -329,10 +301,8 @@
             class="text-button"
             onclick={() => (leaving = true)}>Leave this space</button
           >{/if}
-        <h3>Good people welcome.</h3>
-        <p class="settings-description">
-          Invite someone to pull up a chair. Invite links can be shared with anyone you want to join.
-        </p>
+        <h3>Invite people</h3>
+        <p class="settings-description">Anyone with the link can join this space for the next 48 hours.</p>
         <button
           class="button"
           onclick={async () => {
@@ -342,14 +312,14 @@
             } catch (e) {
               error = errorMessage(e);
             }
-          }}>Create an invite<Icon name="link" size={15} /></button
+          }}><Icon name="link" size={14} />Create an invite</button
         >{#if invite}<div class="invite-copy">
             <input aria-label="Invite link" readonly value={invite} /><button
               class="button small"
               onclick={async () => {
                 try {
                   await navigator.clipboard.writeText(invite);
-                  notice('Invite copied. A good conversation starts with a hello.');
+                  notice('Invite link copied.');
                 } catch {
                   notice('Select and copy the invite link above.');
                 }
@@ -373,8 +343,5 @@
         </p>{/if}
       {#if error}<p class="error" role="alert">{error}</p>{/if}
     </div>
-  </div>
-  <div class="settings-footnote">
-    Made for a little less noise, and a little more connection. <span>Pingo</span>
   </div>
 </div>

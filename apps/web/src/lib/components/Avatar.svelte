@@ -1,5 +1,6 @@
 <script lang="ts">
   import { initials } from '../logic/chat';
+  import { inkFor } from '../theme';
   let {
     name,
     color = '#b7a2d7',
@@ -21,6 +22,7 @@
   class="avatar"
   class:speaking
   style:--avatar-color={color}
+  style:--avatar-ink={inkFor(color)}
   style:--size={`${size}px`}
   title={name}
   aria-label={`${name}${status ? `, ${status}` : ''}`}

@@ -173,16 +173,16 @@
           >{room.voice
             .map((p) => p.name.split(' ')[0])
             .slice(0, 2)
-            .join(', ')}{room.voice.length > 2 ? ` + ${room.voice.length - 2}` : ''}</strong
+            .join(', ')}{room.voice.length > 2 ? ` +${room.voice.length - 2}` : ''}</strong
         >
-        are here.<span>Good company, one click away.</span>
+        {room.voice.length === 1 ? 'is' : 'are'} in a call
       </p>
-      <button class="button soft small" onclick={() => join(room)}
-        ><Icon name="headphones" size={15} />Hop in<Icon name="upRight" size={14} /></button
+      <button class="button primary small" onclick={() => join(room)}
+        ><Icon name="headphones" size={14} />Join</button
       >
     </div>{/if}
   {#if isDemo && messages.length}<div class="pinned-strip">
-      <Icon name="pin" size={13} /><span>Our little corner of the creative process.</span><button
+      <Icon name="pin" size={13} /><span>Pinned</span><button
         onclick={() =>
           onThread(
             messages.find((m) => m.attachments.some((a) => a.id === 'direction'))?._id ??
@@ -207,8 +207,8 @@
   >
     <div class="history-edge">
       {#if query.status === 'CanLoadMore'}<button onclick={older}
-          ><Icon name="arrowUp" size={13} />Earlier conversations</button
-        >{:else}<span class="room-start"><Icon name="sparkles" />This is where something good begins.</span
+          ><Icon name="arrowUp" size={13} />Load earlier messages</button
+        >{:else}<span class="room-start">This is the start of {room.kind === 'dm' ? 'your conversation' : `#${room.name}`}.</span
         >{/if}
     </div>
     <div class="virtual-messages" style:height={`${total}px`}>
@@ -228,20 +228,19 @@
               >
             </div>{/if}
           {#if row.message._id === unreadId}<div class="unread-divider">
-              <span>New since you were here</span>
+              <span>New</span>
             </div>{/if}
           <Message message={row.message} grouped={row.grouped} {onThread} />
         </div>{/each}
     </div>
     {#if query.error}<p class="error" role="alert">{errorMessage(query.error)}</p>{/if}
     {#if !messages.length}<div class="empty-state">
-        <span class="empty-icon"><Icon name="sparkles" size={34} /></span>
-        <h2>A fresh page.</h2>
-        <p>Every good conversation starts with a little hello.</p>
+        <h2>No messages yet</h2>
+        <p>Send the first one below.</p>
       </div>{/if}
   </div>
   {#if !atBottom}<button class="jump-latest" onclick={latest}
-      >{newCount ? `${newCount} new message${newCount > 1 ? 's' : ''}` : 'Back to the present'}<Icon
+      >{newCount ? `${newCount} new message${newCount > 1 ? 's' : ''}` : 'Jump to latest'}<Icon
         name="arrowDown"
         size={15}
       /></button
@@ -252,7 +251,7 @@
   <div class="typing-indicator" aria-live="polite">
     {#if typing.data?.length}<span class="typing-dots"><i></i><i></i><i></i></span><strong
         >{typing.data.map((p) => p.name).join(', ')}</strong
-      > is finding the words…{/if}
+      > {typing.data.length === 1 ? 'is' : 'are'} typing…{/if}
   </div>
   <Composer room={room._id} name={room.name} {space} onSent={latest} {command} />
 </div>

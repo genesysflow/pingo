@@ -2,9 +2,7 @@
   import { errorMessage } from '../data/errors';
   import { onMount } from 'svelte';
   import type { AuthProviders } from '@rxferrix/client';
-  import Flourish from './Flourish.svelte';
   import { api, useAuth, useQuery, useMutation, isDemo } from '../data';
-  import Avatar from './Avatar.svelte';
   import Icon from './Icon.svelte';
   let { inviteCode, enter }: { inviteCode?: string; enter: (space?: string) => void } = $props();
   const auth = useAuth(),
@@ -92,28 +90,24 @@
 
 <div class="auth-page">
   <div class="auth-story">
-    <a class="auth-brand" href="/"><img src="/pingo.svg" alt="" />pingo<span>a little closer.</span></a>
-    <div class="auth-art">
-      <span class="auth-star"><Flourish /></span><span class="auth-orbit orbit-one"></span><span
-        class="auth-orbit orbit-two"
-      ></span><span class="auth-face face-one"
-        ><Avatar name="Maya Chen" color="#edb18e" size={82} /><i>hey, you’re here.</i></span
-      ><span class="auth-face face-two"><Avatar name="Leo Park" color="#a0c4af" size={64} /></span><span
-        class="auth-face face-three"><Avatar name="Sofia Reyes" color="#e6a4ba" size={62} /></span
-      ><span class="auth-small-star">✧</span>
+    <a class="auth-brand" href="/"><img src="/pingo.svg" alt="" />Pingo</a>
+    <div class="auth-pitch">
+      <h1>Chat, voice and screen sharing for small teams.</h1>
+      <ul class="auth-specs">
+        <li><span>Voice</span>Opus at 48 kHz, stereo Studio mode</li>
+        <li><span>Noise</span>DeepFilterNet3 on every microphone</li>
+        <li><span>Screen</span>Sharp text up to 4K, or 1080p60 motion</li>
+        <li><span>Server</span>One binary you run yourself</li>
+      </ul>
     </div>
-    <h1>Your people.<br />A little closer.</h1>
-    <p>For the big ideas, the little updates,<br />and the conversations in between.</p>
-    <span class="auth-story-footer"
-      ><Icon name="leaf" size={14} />A little less noise. A little more together.</span
-    >
+    <div class="auth-meter" aria-hidden="true">
+      {#each Array(28) as _, i}<i style:--h={`${18 + Math.abs(Math.sin(i * 1.7) * 62)}%`} style:--d={`${(i % 7) * 0.13}s`}></i>{/each}
+    </div>
   </div>
   <main class="auth-form-side">
-    <div class="auth-theme-note">YOUR NEXT GOOD CONVERSATION STARTS HERE</div>
     <div class="auth-form">
-      {#if inviteCode && preview.data === null}<span class="empty-icon"><Icon name="mail" size={32} /></span>
-        <h2>This little door has closed.</h2>
-        <p class="settings-description">That invite has expired. Ask your person for a fresh one.</p>
+      {#if inviteCode && preview.data === null}<h2>This invite has expired</h2>
+        <p class="settings-description">Ask whoever sent it for a new link.</p>
         <button
           class="button primary"
           onclick={() => {
@@ -121,41 +115,24 @@
             enter();
           }}>{isDemo ? 'Explore the demo' : 'Back to Pingo'}</button
         >
-      {:else if inviteCode && auth.isAuthenticated}<span class="invite-flower"><Flourish /></span><span
-          class="eyebrow">A PLACE FOR YOU</span
-        >
-        <h2>Pull up a chair.</h2>
+      {:else if inviteCode && auth.isAuthenticated}<span class="auth-kicker">Invitation</span>
+        <h2>Join {preview.data?.spaceName ?? 'this space'}</h2>
         <p class="settings-description">
-          You’ve been invited to <strong>{preview.data?.spaceName}</strong>. A few good people are already
-          here.
+          {preview.data?.memberCount ?? 0}
+          {preview.data?.memberCount === 1 ? 'member' : 'members'}
         </p>
-        <div class="invite-people">
-          <div class="avatar-stack">
-            <Avatar name="Maya Chen" color="#edb18e" /><Avatar name="Leo Park" color="#a0c4af" /><Avatar
-              name="Sofia Reyes"
-              color="#e6a4ba"
-            />
-          </div>
-          <span>{preview.data?.memberCount} people making good things.</span>
-        </div>
         <button
           class="button primary full"
           disabled={!preview.data}
           onclick={() => finish().catch((e) => (error = errorMessage(e)))}
-          >Join {preview.data?.spaceName}<Icon name="arrowRight" size={17} /></button
+          >Join {preview.data?.spaceName}</button
         >
-        <p class="muted tiny">
-          {isDemo
-            ? 'Interactive demo · no account or email is required.'
-            : 'A little room to make something together.'}
-        </p>
+        {#if isDemo}<p class="muted tiny">Interactive demo. No account or email needed.</p>{/if}
         {#if error}<p class="error" role="alert">{error}</p>{/if}
-      {:else if sent}<span class="empty-icon"><Icon name="mail" size={32} /></span>
-        <h2>A little note for you.</h2>
+      {:else if sent}<h2>Check your email</h2>
         <p class="settings-description">
           {#if isDemo}In the live app, a sign-in link would arrive at <strong>{email}</strong>. This demo
-            keeps everything local.{:else}We’ve sent a sign-in link to <strong>{email}</strong>. Open it to
-            come on in.{/if}
+            keeps everything local.{:else}We sent a sign-in link and code to <strong>{email}</strong>.{/if}
         </p>
         {#if !isDemo}<form onsubmit={verifyCode}>
             <label class="field"
@@ -174,19 +151,12 @@
             onclick={async () => {
               await auth.verifyMagicLink('demo');
               await finish();
-            }}>Try the demo sign-in link<Icon name="arrowRight" size={17} /></button
+            }}>Try the demo sign-in link</button
           >{/if}<button class="text-button" onclick={() => (sent = false)}>Use another email</button>
-      {:else}<span class="eyebrow">{signup ? 'MAKE YOURSELF AT HOME' : 'GOOD TO HAVE YOU HERE'}</span>
-        <h2>
-          {signup ? 'A fresh little start.' : inviteCode ? 'Your people are waiting.' : 'Welcome back.'}
-        </h2>
-        <p class="settings-description">
-          {inviteCode
-            ? `Sign in to join ${preview.data?.spaceName ?? 'your space'}.`
-            : signup
-              ? 'There’s always room for one more good person.'
-              : 'Settle in. There’s a little catching up to do.'}
-        </p>
+      {:else}<h2>{signup ? 'Create an account' : 'Sign in'}</h2>
+        {#if inviteCode}<p class="settings-description">
+            to join {preview.data?.spaceName ?? 'this space'}
+          </p>{/if}
         {#if providers?.oauth.length}<div class="oauth-buttons">
             {#each providers.oauth as provider}<button class="button" onclick={() => oauth(provider)}>
                 <Icon
@@ -202,7 +172,7 @@
                       : provider}
               </button>{/each}
           </div>
-          <div class="auth-divider"><span>or a little more familiar</span></div>{/if}
+          <div class="auth-divider"><span>or with email</span></div>{/if}
         <form onsubmit={submit}>
           {#if mfaToken}<label class="field"
               >Authenticator or recovery code<input
@@ -216,7 +186,7 @@
                   bind:value={name}
                   required
                   maxlength="32"
-                  placeholder="What should we call you?"
+                  placeholder="Ada Lovelace"
                 /></label
               >{/if}<label class="field"
               >Email address<input
@@ -224,7 +194,7 @@
                 autocomplete="email"
                 required
                 bind:value={email}
-                placeholder="you@somewhere.good"
+                placeholder="you@example.com"
               /></label
             >{#if !magic}<label class="field"
                 >Password<input
@@ -233,7 +203,7 @@
                   minlength="8"
                   bind:value={password}
                   required
-                  placeholder="Your secret little phrase"
+                  placeholder="At least 8 characters"
                 /></label
               >{/if}{/if}{#if error}<p class="error" role="alert">{error}</p>{/if}<button
             class="button primary full"
@@ -243,8 +213,8 @@
               : magic
                 ? 'Send me a sign-in link'
                 : signup
-                  ? 'Make yourself at home'
-                  : 'Come on in'}<Icon name="arrowRight" size={17} /></button
+                  ? 'Create account'
+                  : 'Sign in'}</button
           >
         </form>
         {#if providers?.magicLink}<button class="magic-link" onclick={() => (magic = !magic)}
@@ -253,15 +223,14 @@
               : 'Email me a magic link instead'}</button
           >
         {/if}{#if providers?.signups}<p class="auth-switch">
-            {signup ? 'Already one of us?' : 'New around here?'}<button onclick={() => (signup = !signup)}
-              >{signup ? 'Sign in' : 'Create an account'}<Icon name="upRight" size={13} /></button
+            {signup ? 'Have an account?' : 'New to Pingo?'}<button onclick={() => (signup = !signup)}
+              >{signup ? 'Sign in' : 'Create an account'}</button
             >
           </p>
         {/if}{#if isDemo}<p class="demo-note">
-            <Icon name="sparkles" size={14} />This is a local demo. Use any email and a 6-character password.<br
-            />OAuth buttons simulate sign-in; no email is sent.
+            Local demo: use any email and a password of 6+ characters. OAuth buttons simulate sign-in; no email
+            is sent.
           </p>{/if}{/if}
     </div>
-    <span class="auth-legal">A good place to be yourself.</span>
   </main>
 </div>

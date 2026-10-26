@@ -11,7 +11,7 @@
   <div class="panel-heading">
     <div>
       <Icon name="thread" />
-      <h2>A little side conversation</h2>
+      <h2>Thread</h2>
     </div>
     <button class="icon-button" onclick={close} aria-label="Close thread"><Icon name="close" /></button>
   </div>

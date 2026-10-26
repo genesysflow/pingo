@@ -28,7 +28,7 @@ test('real auth, invites, live chat, threads, reactions, unread and mentions', a
     await expect(alice.getByRole('button', { name: /1 replies/ })).toBeVisible();
     await bob.screenshot({ path: 'screenshots/real-thread.png', animations: 'disabled' });
     await bob.getByRole('button', { name: 'Close thread' }).click();
-    await bob.getByRole('button', { name: 'Catch up', exact: false }).first().click();
+    await bob.getByRole('button', { name: 'Inbox', exact: true }).first().click();
     await send(alice, 'A new update for @Bob');
     await expect(bob.locator('.room-link.unread')).toHaveCount(1);
     await expect(bob.locator('.inbox-card').filter({ hasText: 'A new update for @Bob' })).toBeVisible();
@@ -39,10 +39,10 @@ test('real auth, invites, live chat, threads, reactions, unread and mentions', a
     await bob.reload();
     await expect(bob.getByRole('heading', { name: 'general', exact: true })).toBeVisible();
     await alice.screenshot({ path: 'screenshots/real-chat.png', animations: 'disabled' });
-    await bob.getByRole('button', { name: 'Catch up', exact: false }).first().click();
+    await bob.getByRole('button', { name: 'Inbox', exact: true }).first().click();
     await bob.getByRole('button', { name: 'Mark all done', exact: false }).click();
     await expect(bob.locator('.inbox-card')).toHaveCount(0);
-    await bob.getByRole('button', { name: 'Back to your people', exact: false }).click();
+    await bob.getByRole('button', { name: 'Back to rooms', exact: true }).click();
     await bob.getByRole('button', { name: 'Show members', exact: true }).click();
     await bob
       .getByRole('complementary', { name: 'Members', exact: true })
@@ -70,8 +70,8 @@ test('real message history loads older cursor pages without unbounded DOM rows',
   await expect(page.locator('[data-message-id^="optimistic:"]')).toHaveCount(0);
   const log = page.getByRole('log');
   await log.evaluate((node) => (node.scrollTop = 0));
-  await page.getByRole('button', { name: 'Earlier conversations' }).click();
-  await expect(page.getByRole('button', { name: 'Earlier conversations' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Load earlier messages' }).click();
+  await expect(page.getByRole('button', { name: 'Load earlier messages' })).toHaveCount(0);
   // Loading older pages re-anchors the scroll position after a tick, which can land after an immediate
   // Control+Home; retry the jump until the oldest message is on screen.
   await expect(async () => {

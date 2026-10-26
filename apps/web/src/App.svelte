@@ -1,6 +1,5 @@
 <script lang="ts">
   import { errorMessage } from './lib/data/errors';
-  import Flourish from './lib/components/Flourish.svelte';
   import { onMount } from 'svelte';
   import {
     api,
@@ -29,6 +28,7 @@
   import Modal from './lib/components/Modal.svelte';
   import { nativeDesktop } from './lib/desktop/bridge';
   import DesktopEvents from './lib/desktop/DesktopEvents.svelte';
+  import { DEFAULT_ACCENT, inkFor as onAccent } from './lib/theme';
   initializeData();
   const auth = useAuth(),
     call = createCall();
@@ -198,7 +198,7 @@
     const target = pendingCall;
     pendingCall = null;
     if (target) await join(target);
-    else notice('Your sound is all set. Good conversations ahead.');
+    else notice('Sound check saved.');
   }
   function action(name: string) {
     if (name === 'call' && currentRoom.data) void join(currentRoom.data);
@@ -206,7 +206,7 @@
       if (!call.room) {
         if (currentRoom.data) {
           void join(currentRoom.data);
-          notice('Join the call, then use Share to try the screen preview.');
+          notice('Join the call, then share your screen.');
         }
       } else {
         if (!call.sharing) call.toggleShare();
@@ -216,7 +216,7 @@
     }
     if (name === 'mute') {
       if (call.room) call.toggleMute();
-      else notice('Hop into a call to use your microphone.');
+      else notice('Join a call to use your microphone.');
     }
     if (name === 'status') {
       customStatus = me.data?.statusText ?? '';
@@ -297,6 +297,21 @@
       call.destroy();
     };
   });
+  const accent = $derived(currentSpace?.accent ?? DEFAULT_ACCENT);
+  const presenceLabel: Record<string, string> = {
+    online: 'Online',
+    idle: 'Away',
+    dnd: 'Do not disturb',
+    offline: 'Invisible',
+  };
+  function initials(name: string) {
+    return name
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map((w) => w[0]!.toUpperCase())
+      .join('');
+  }
 </script>
 
 {#if nativeDesktop}<DesktopEvents {call} />{/if}
@@ -317,21 +332,22 @@
 <svelte:head
   ><title
     >{inviteCode
-      ? 'Pull up a chair'
+      ? 'Invitation'
       : !auth.isAuthenticated || path === '/signin'
-        ? 'Welcome'
+        ? 'Sign in'
         : view === 'inbox'
-          ? 'Catch up'
+          ? 'Inbox'
           : view === 'settings'
-            ? 'Make yourself at home'
-            : `${currentRoom.data?.name ?? 'Your people'}`} · Pingo</title
+            ? 'Settings'
+            : `${currentRoom.data?.name ?? 'Pingo'}`} · Pingo</title
   ></svelte:head
 >
 <div
   class="app-root"
   data-theme={theme}
   data-density={density}
-  style:--accent={currentSpace?.accent ?? '#8064cc'}
+  style:--accent={accent}
+  style:--on-accent={onAccent(accent)}
 >
   {#if !auth.isAuthenticated || inviteCode || path === '/signin' || path === '/signup'}<Auth
       {inviteCode}
@@ -344,30 +360,31 @@
         }
       }}
     />
-  {:else if spaces.isLoading}<main class="empty-state" aria-busy="true">Finding your people…</main>
+  {:else if spaces.isLoading}<main class="empty-state" aria-busy="true">Loading…</main>
   {:else if spaces.error}<main class="empty-state">
       <p role="alert">{errorMessage(spaces.error)}</p>
       <button class="button" onclick={() => auth.signOut()}>Sign out</button>
     </main>
-  {:else if spaces.data?.length === 0}<main class="empty-state onboarding">
-      <img src="/pingo.svg" width="64" alt="Pingo" />
-      <h1>Make a little space.</h1>
-      <p>Create a space for your people, or paste an invite to join them.</p>
+  {:else if spaces.data?.length === 0}<main class="onboarding">
       <form
+        class="onboarding-card"
         onsubmit={(e) => {
           modal = 'space';
           void submitCreate(e);
         }}
       >
+        <img src="/pingo.svg" width="36" height="36" alt="Pingo" />
+        <h1>Create your first space</h1>
+        <p class="settings-description">A space holds your rooms, calls and people.</p>
         <label class="field"
           >Space name<input bind:value={createName} maxlength="32" required={!joinCode} /></label
         >
-        <div class="auth-divider"><span>or come on in</span></div>
+        <div class="auth-divider"><span>or join one</span></div>
         <label class="field">Invite link or code<input bind:value={joinCode} /></label>
         {#if formError}<p class="error" role="alert">{formError}</p>{/if}
-        <button class="button primary">{joinCode ? 'Join your people' : 'Create space'}</button>
+        <button class="button primary full">{joinCode ? 'Join space' : 'Create space'}</button>
+        <button type="button" class="text-button" onclick={() => auth.signOut()}>Sign out</button>
       </form>
-      <button class="text-button" onclick={() => auth.signOut()}>Sign out</button>
     </main>
   {:else}
     <a href="#main-content" class="skip-link">Skip to conversation</a>
@@ -379,45 +396,35 @@
           roomId = '';
           route('/');
         }}><img src="/pingo.svg" alt="Pingo" /></button
-      ><span class="rail-divider"></span>{#each spaces.data ?? [] as s, i}<button
+      >{#each spaces.data ?? [] as s}<button
           class="space-icon"
           class:active={space === s._id}
           style:--space-color={s.accent}
+          style:--space-ink={onAccent(s.accent)}
           aria-label={`${s.name}${s.mentions ? `, ${s.mentions} mentions` : ''}`}
           aria-current={space === s._id ? 'page' : undefined}
           title={s.name}
           onclick={() => selectSpace(s._id)}
-          >{#if s.iconUrl}<img
-              src={s.iconUrl}
-              alt=""
-              style="width:100%;height:100%;object-fit:cover;border-radius:inherit"
-            />{:else if i === 0}<Icon name="sparkles" size={25} />{:else if i === 1}<Icon
-              name="moon"
-              size={23}
-            />{:else}<Icon name="sprout" size={24} />{/if}{#if s.mentions}<span class="rail-badge"
-              >{s.mentions}</span
+          >{#if s.iconUrl}<img src={s.iconUrl} alt="" />{:else}{initials(s.name)}{/if}{#if s.mentions}<span
+              class="rail-badge">{s.mentions}</span
             >{:else if s.unread}<span class="rail-unread"></span>{/if}</button
         >{/each}<button
         class="rail-add"
         aria-label="Create or join a space"
+        title="Create or join a space"
         onclick={() => {
           modal = 'space';
           createName = '';
           joinCode = '';
           formError = '';
-        }}><Icon name="plus" size={22} /></button
+        }}><Icon name="plus" size={18} /></button
       >
       <div class="rail-bottom">
-        <button class="icon-button" aria-label="Keyboard shortcuts" onclick={() => (shortcutSheet = true)}
-          ><Icon name="help" size={21} /></button
-        ><button class="self-avatar" aria-label="Your profile" onclick={() => settings('Profile')}
-          ><Avatar
-            url={me.data?.avatarUrl}
-            name={me.data?.name ?? 'Alex Morgan'}
-            color={me.data?.color}
-            size={36}
-            status={me.data?.status}
-          /></button
+        <button
+          class="icon-button"
+          aria-label="Keyboard shortcuts"
+          title="Keyboard shortcuts"
+          onclick={() => (shortcutSheet = true)}><Icon name="keyboard" size={18} /></button
         >
       </div>
     </nav>
@@ -427,40 +434,49 @@
           class="space-heading-main"
           aria-expanded={workspaceMenu}
           onclick={() => (workspaceMenu = !workspaceMenu)}
-          ><span class="space-wordmark"
-            >{currentSpace?.name ?? 'Your space'}<Icon name="down" size={16} /></span
-          ><span>A place to make good things.</span></button
+          ><span class="space-wordmark">{currentSpace?.name ?? 'Space'}</span><Icon
+            name="down"
+            size={15}
+          /></button
         ><button
           class="icon-button mobile-close"
           aria-label="Close sidebar"
           onclick={() => (mobileSidebar = false)}><Icon name="close" /></button
         >{#if workspaceMenu}<div class="workspace-menu">
             <button onclick={() => settings('Space')}
-              ><Icon name="settings" size={16} />Space settings & invites</button
+              ><Icon name="settings" size={15} />Space settings & invites</button
             ><button
               onclick={() => {
                 modal = 'space';
                 workspaceMenu = false;
-              }}><Icon name="plus" size={16} />Create or join a space</button
-            ><button onclick={() => settings('Profile')}><Icon name="users" size={16} />Your profile</button>
+              }}><Icon name="plus" size={15} />Create or join a space</button
+            ><button onclick={() => settings('Profile')}><Icon name="users" size={15} />Your profile</button>
           </div>{/if}
       </div>
-      <button class="quick-find" onclick={() => (palette = true)}
-        ><Icon name="search" size={16} /><span>Find your way</span><kbd>⌘ K</kbd></button
-      ><button class="catch-up-entry" class:active={view === 'inbox'} onclick={catchUp}
-        ><Icon name="inbox" size={18} /><span>Catch up</span>{#if inboxCount.data}<span class="quiet-badge"
-            >{inboxCount.data}</span
-          >{:else}<Icon name="check" size={14} />{/if}</button
-      >
+      <div class="sidebar-tools">
+        <button class="quick-find" onclick={() => (palette = true)}
+          ><Icon name="search" size={15} /><span>Search</span><kbd>Ctrl K</kbd></button
+        ><button
+          class="nav-row"
+          class:active={view === 'inbox'}
+          aria-label="Inbox"
+          aria-current={view === 'inbox' ? 'page' : undefined}
+          onclick={catchUp}
+          ><Icon name="inbox" size={16} /><span>Inbox</span>{#if inboxCount.data}<span class="count"
+              >{inboxCount.data}</span
+            >{/if}</button
+        >
+      </div>
       <div class="sidebar-scroll">
         <div class="section-label">
-          <span>YOUR ROOMS</span><button
+          <span>Rooms</span><button
             aria-label="Create a room"
+            title="Create a room"
             onclick={() => {
               modal = 'room';
               createName = '';
               formError = '';
-            }}><Icon name="plus" size={15} /></button
+            }}><Icon name="plus" size={14} /></button
           >
         </div>
         <nav class="room-list" aria-label="Chat rooms">
@@ -473,49 +489,48 @@
                 class:unread={r.unread > 0}
                 aria-current={roomId === r._id && view === 'chat' && !stage ? 'page' : undefined}
                 onclick={() => navigate(r._id)}
-                ><Icon name={r.kind === 'stage' ? 'radio' : r.private ? 'lock' : 'hash'} size={17} /><span
+                ><Icon name={r.kind === 'stage' ? 'radio' : r.private ? 'lock' : 'hash'} size={15} /><span
                   >{r.name}</span
-                >{#if r.mentions}<span class="mention-badge">{r.mentions}</span>{:else if r.unread}<span
+                >{#if r.mentions}<span class="count accent">{r.mentions}</span>{:else if r.unread}<span
                     class="unread-dot"
                   ></span>{/if}</button
               >{#if r.voice.length}<div class="room-voice">
-                  <span class="voice-branch"></span><button
+                  <button
                     class="voice-people"
                     aria-label={`${r.voice.length} people in ${r.name} call`}
                     onclick={() => join(r)}
-                    >{#each r.voice.slice(0, 3) as p}<Avatar
-                        name={p.name}
-                        color={p.color}
-                        size={21}
-                        speaking={(call.levels[p.user] ?? 0) > 0.5}
-                      />{/each}<span
-                      >{r.voice.length === 1 ? r.voice[0].name.split(' ')[0] : 'A few good people'}</span
-                    ></button
-                  >{#if call.room !== r._id}<button class="hop-in" onclick={() => join(r)}
-                      >Hop in<Icon name="upRight" size={11} /></button
-                    >{/if}
+                    >{#each r.voice.slice(0, 4) as p}<span
+                        class="voice-person"
+                        class:speaking={(call.levels[p.user] ?? 0) > 0.5 && !p.muted}
+                        ><Avatar name={p.name} color={p.color} size={18} /><span>{p.name.split(' ')[0]}</span
+                        >{#if p.muted}<Icon name="micOff" size={11} />{/if}</span
+                      >{/each}{#if r.voice.length > 4}<span class="voice-more">+{r.voice.length - 4}</span
+                      >{/if}</button
+                  >{#if call.room !== r._id}<button class="hop-in" onclick={() => join(r)}>Join</button>{/if}
                 </div>{/if}
             </div>{/each}
         </nav>
-        <div class="section-label lounge-label">
-          <span>A LITTLE ROOM TO HANG</span><Icon name="sprout" size={14} />
-        </div>
-        {#each (rooms.data ?? []).filter((r) => r.kind === 'lounge') as r}<button
-            class="lounge-sidebar-card"
-            class:active={roomId === r._id && view === 'chat'}
-            onclick={() => navigate(r._id)}
-            ><span class="lounge-card-icon"><Icon name="sprout" size={23} /></span><span
-              ><strong>{r.name}</strong><small
-                >{r.voice.length ? `${r.voice.length} people, no agenda` : 'A quiet little corner'}</small
-              ></span
-            ><Icon name="right" size={15} /></button
-          >{/each}
-        <div class="section-label dm-label">
-          <span>DIRECT MESSAGES</span><button
+        {#if (rooms.data ?? []).some((r) => r.kind === 'lounge')}<div class="section-label">
+            <span>Lounges</span>
+          </div>
+          <nav class="room-list" aria-label="Lounges">
+            {#each (rooms.data ?? []).filter((r) => r.kind === 'lounge') as r}<button
+                class="room-link lounge-link"
+                class:active={roomId === r._id && view === 'chat'}
+                aria-current={roomId === r._id && view === 'chat' ? 'page' : undefined}
+                onclick={() => navigate(r._id)}
+                ><Icon name="radio" size={15} /><span>{r.name}</span>{#if r.voice.length}<span class="live-count"
+                    ><span class="live-dot"></span>{r.voice.length}</span
+                  >{/if}</button
+              >{/each}
+          </nav>{/if}
+        <div class="section-label">
+          <span>Direct messages</span><button
             aria-label="New direct message"
+            title="New direct message"
             onclick={() => {
               palette = true;
-            }}><Icon name="plus" size={15} /></button
+            }}><Icon name="plus" size={14} /></button
           >
         </div>
         <nav class="dm-list" aria-label="Direct messages">
@@ -527,35 +542,31 @@
                 url={dm.other.avatarUrl}
                 name={dm.other.name}
                 color={dm.other.color}
-                size={27}
+                size={20}
                 status={dm.other.status}
               /><span>{dm.other.name}</span>{#if dm.unread}<span class="unread-dot"></span>{/if}</button
             >{/each}
         </nav>
         <button class="invite-people-button" onclick={() => settings('Space')}
-          ><Icon name="plus" size={15} />Good people welcome.</button
+          ><Icon name="plus" size={14} />Invite people</button
         >
       </div>
-      <div class="sidebar-bottom">
-        <div class="sidebar-note">
-          <span><Flourish /></span>
-          <p>A good day to make<br />something together.</p>
-        </div>
-        <div class="sidebar-user">
-          <button onclick={() => action('status')}
-            ><span class="live-dot"></span><span
-              >{me.data?.status === 'dnd'
-                ? 'In the flow'
-                : me.data?.status === 'idle'
-                  ? 'A little away'
-                  : me.data?.status === 'offline'
-                    ? 'Taking a quiet moment'
-                    : 'Here for the good stuff'}</span
-            ><Icon name="down" size={12} /></button
-          ><button class="icon-button" aria-label="Open settings" onclick={() => settings()}
-            ><Icon name="settings" size={17} /></button
-          >
-        </div>
+      <div class="sidebar-user">
+        <button class="self-avatar" aria-label="Your profile" onclick={() => settings('Profile')}
+          ><Avatar
+            url={me.data?.avatarUrl}
+            name={me.data?.name ?? 'You'}
+            color={me.data?.color}
+            size={30}
+            status={me.data?.status}
+          /></button
+        ><button class="self-status" onclick={() => action('status')}
+          ><strong>{me.data?.name ?? 'You'}</strong><span
+            >{me.data?.statusText || presenceLabel[me.data?.status ?? 'online']}</span
+          ></button
+        ><button class="icon-button" aria-label="Open settings" title="Settings" onclick={() => settings()}
+          ><Icon name="settings" size={16} /></button
+        >
       </div>
     </aside>
     <main class="main-shell" id="main-content" tabindex="-1">
@@ -575,64 +586,66 @@
                   : stage
                     ? 'headphones'
                     : currentRoom.data?.kind === 'lounge'
-                      ? 'sprout'
+                      ? 'radio'
                       : currentRoom.data?.kind === 'dm'
                         ? 'mail'
                         : currentRoom.data?.kind === 'stage'
                           ? 'radio'
                           : 'hash'}
-              size={23}
+              size={17}
             /></span
           >
-          <div>
-            <h1>
-              {view === 'inbox'
-                ? 'Catch up'
-                : view === 'settings'
-                  ? 'Your little preferences'
-                  : stage
-                    ? call.roomName
-                    : (currentRoom.data?.name ?? 'Your room')}
-            </h1>
-            <p>
-              {view === 'inbox'
-                ? 'The things for you, all in one place.'
-                : view === 'settings'
-                  ? 'A place that feels like you.'
-                  : stage
-                    ? 'Same room. A little closer.'
-                    : currentRoom.data?.topic}
-            </p>
-          </div>
+          <h1>
+            {view === 'inbox'
+              ? 'Inbox'
+              : view === 'settings'
+                ? 'Settings'
+                : stage
+                  ? call.roomName
+                  : (currentRoom.data?.name ?? 'Pingo')}
+          </h1>
+          {#if view === 'chat' && !stage && currentRoom.data?.topic}<p>{currentRoom.data.topic}</p>{/if}
         </div>
         <div class="header-actions">
           {#if view === 'chat'}{#if currentRoom.data && currentRoom.data.myPerms & 8 && currentRoom.data.kind !== 'dm'}<button
                 class="icon-button"
                 aria-label="Room settings"
-                onclick={() => (roomSettings = true)}><Icon name="settings" size={18} /></button
-              >{/if}<button class="icon-button" aria-label="Search messages" onclick={() => (palette = true)}
-              ><Icon name="search" size={19} /></button
+                title="Room settings"
+                onclick={() => (roomSettings = true)}><Icon name="settings" size={17} /></button
+              >{/if}<button
+              class="icon-button"
+              aria-label="Search messages"
+              title="Search"
+              onclick={() => (palette = true)}><Icon name="search" size={17} /></button
             ><button
               class="icon-button"
               aria-label="Show members"
+              title="Members"
               aria-pressed={members}
+              class:active={members}
               onclick={() => {
                 members = !members;
                 thread = null;
-              }}><Icon name="users" size={19} /></button
-            ><span class="header-divider"></span><button
-              class="header-call-button"
-              onclick={() => {
-                if (call.room) {
-                  stage = true;
-                } else if (currentRoom.data) void join(currentRoom.data);
-              }}
-              ><Icon name="headphones" size={17} /><span>{call.room ? 'Your call' : 'Start a call'}</span
-              ></button
-            >{:else}<button class="icon-button" aria-label="Find your way" onclick={() => (palette = true)}
-              ><Icon name="search" size={19} /></button
-            ><button class="icon-button" aria-label="Change theme" onclick={() => action('theme')}
-              ><Icon name={theme === 'light' ? 'moon' : 'sun'} size={19} /></button
+              }}><Icon name="users" size={17} /></button
+            >{#if !stage}<button
+                class="header-call-button"
+                class:live={!!call.room}
+                onclick={() => {
+                  if (call.room) {
+                    stage = true;
+                  } else if (currentRoom.data) void join(currentRoom.data);
+                }}
+                >{#if call.room}<span class="live-dot"></span>{:else}<Icon
+                    name="headphones"
+                    size={15}
+                  />{/if}<span>{call.room ? 'Back to call' : 'Start a call'}</span></button
+              >{/if}{:else}<button
+              class="icon-button"
+              aria-label="Search"
+              title="Search"
+              onclick={() => (palette = true)}><Icon name="search" size={17} /></button
+            ><button class="icon-button" aria-label="Change theme" title="Theme" onclick={() => action('theme')}
+              ><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></button
             >{/if}
         </div>
       </header>
@@ -673,9 +686,8 @@
               {join}
               command={action}
             />{/key}{:else}<div class="empty-state">
-            <Icon name="compass" size={40} />
-            <h2>A new little corner.</h2>
-            <p>Choose a room to get comfortable.</p>
+            <h2>No room selected</h2>
+            <p>Pick a room from the sidebar.</p>
           </div>{/if}
         {#if view === 'chat' && thread}<Thread
             root={thread}
@@ -691,6 +703,7 @@
     </main>
     {#if call.room && !(stage && view === 'chat')}<CallPill
         {call}
+        self={me.data}
         expand={() => {
           stage = true;
           view = 'chat';
@@ -706,10 +719,9 @@
       {navigate}
       {action}
     />{/if}
-  {#if shortcutSheet}<Modal title="A few little shortcuts." close={() => (shortcutSheet = false)}
-      ><p class="settings-description">Find your flow, one key at a time.</p>
-      <div class="shortcut-list">
-        {#each [['Find your way', 'Ctrl / ⌘ K'], ['This little sheet', '?'], ['Send a message', 'Enter'], ['A new line', 'Shift Enter'], ['Bold / italic', 'Ctrl / ⌘ B / I'], ['Browse Catch up', 'J / K'], ['Mark as done in Catch up', 'E'], ['Move in the lounge', '← ↑ ↓ →'], ['Point / draw on share', 'Enter / D'], ['Close a panel', 'Escape']] as [label, key]}<div
+  {#if shortcutSheet}<Modal title="Keyboard shortcuts" close={() => (shortcutSheet = false)}
+      ><div class="shortcut-list">
+        {#each [['Search', 'Ctrl / ⌘ K'], ['Show shortcuts', '?'], ['Send a message', 'Enter'], ['New line', 'Shift Enter'], ['Bold / italic', 'Ctrl / ⌘ B / I'], ['Browse the inbox', 'J / K'], ['Mark inbox item done', 'E'], ['Move in a lounge', '← ↑ ↓ →'], ['Point / draw on a share', 'Enter / D'], ['Close a panel', 'Esc']] as [label, key]}<div
           >
             <span>{label}</span><kbd>{key}</kbd>
           </div>{/each}
@@ -724,39 +736,30 @@
       complete={completeSound}
     />{/if}
   {#if (modal === 'space' || modal === 'room') && spaces.data?.length}<Modal
-      title={modal === 'space' ? 'Make a little space.' : 'A new room for good ideas.'}
+      title={modal === 'space' ? 'Create or join a space' : 'New room'}
       close={() => (modal = null)}
-      ><p class="settings-description">
-        {modal === 'space'
-          ? 'Start something with your people, or find a place you’ve been invited to.'
-          : 'Every room has a chat and a place to talk. Pick the feeling.'}
-      </p>
-      <form onsubmit={submitCreate}>
+      ><form onsubmit={submitCreate}>
         <label class="field"
           >{modal === 'space' ? 'Space name' : 'Room name'}<input
             bind:value={createName}
             maxlength="32"
-            placeholder={modal === 'space' ? 'Something lovely' : 'the-next-good-thing'}
+            placeholder={modal === 'space' ? 'Acme' : 'design-review'}
             required={!joinCode}
           /></label
-        >{#if modal === 'space'}<div class="auth-divider"><span>or come on in</span></div>
+        >{#if modal === 'space'}<div class="auth-divider"><span>or join one</span></div>
           <label class="field"
-            >Invite link or code<input bind:value={joinCode} placeholder="fieldwork-friends" /></label
+            >Invite link or code<input bind:value={joinCode} placeholder="Paste an invite link" /></label
           >{:else}<label class="field"
-            >Room feeling<select bind:value={roomKind}
-              ><option value="chat">Chat · ideas, updates, and a place to talk</option><option value="lounge"
-                >Lounge · wander into a conversation</option
-              ><option value="stage">Stage · something worth sharing</option></select
+            >Type<select bind:value={roomKind}
+              ><option value="chat">Chat · messages, with a call when you need one</option><option value="lounge"
+                >Lounge · spatial audio, walk up to talk</option
+              ><option value="stage">Stage · presentations and screen shares</option></select
             ></label
           ><label class="setting-toggle"
-            ><span>Private room</span><input type="checkbox" bind:checked={createPrivate} /></label
+            ><span><strong>Private room</strong></span><input type="checkbox" bind:checked={createPrivate} /></label
           >{/if}{#if formError}<p class="error" role="alert">{formError}</p>{/if}<button
           class="button primary full"
-          >{joinCode
-            ? 'Join your people'
-            : modal === 'space'
-              ? 'Make yourself at home'
-              : 'Open the door'}<Icon name="arrowRight" size={16} /></button
+          >{joinCode ? 'Join space' : modal === 'space' ? 'Create space' : 'Create room'}</button
         >
       </form></Modal
     >{/if}
@@ -767,34 +770,27 @@
         roomId = '';
       }}
     />{/if}
-  {#if modal === 'status'}<Modal title="What’s your world like today?" close={() => (modal = null)}
+  {#if modal === 'status'}<Modal title="Set status" close={() => (modal = null)}
       ><label class="field"
-        >A little status<input
-          bind:value={customStatus}
-          maxlength="100"
-          placeholder="In the flow, out for coffee…"
-        /></label
+        >Status<input bind:value={customStatus} maxlength="100" placeholder="In a meeting until 3" /></label
       ><label class="field"
-        >Your presence<select bind:value={presenceStatus}
-          ><option value="online">Here and happy to chat</option><option value="idle">A little away</option
-          ><option value="dnd">In the flow · do not disturb</option><option value="offline"
-            >Taking a quiet moment</option
-          ></select
+        >Presence<select bind:value={presenceStatus}
+          ><option value="online">Online</option><option value="idle">Away</option><option value="dnd"
+            >Do not disturb</option
+          ><option value="offline">Invisible</option></select
         ></label
       ><button
         class="button primary full"
         onclick={async () => {
           await setStatus({ status: presenceStatus, text: customStatus });
           modal = null;
-          notice('Your people are in the loop.');
-        }}>That’s me<Icon name="check" size={16} /></button
+          notice('Status updated.');
+        }}>Save status</button
       ></Modal
     >{/if}
   {#if toast}<div class="toast" role="status">
-      <span class="toast-spark"><Flourish /></span>{toast}<button
-        class="icon-button"
-        aria-label="Dismiss notification"
-        onclick={() => (toast = '')}><Icon name="close" size={15} /></button
+      {toast}<button class="icon-button" aria-label="Dismiss notification" onclick={() => (toast = '')}
+        ><Icon name="close" size={14} /></button
       >
     </div>{/if}
 </div>
