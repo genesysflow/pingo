@@ -3104,7 +3104,7 @@ button.dock-chip:hover {
   border: 1px solid var(--border);
   border-radius: 8px;
 }
-.profile-preview > span {
+.profile-preview > span:not(.avatar) {
   flex: 1;
   min-width: 0;
 }
