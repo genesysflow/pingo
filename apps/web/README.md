@@ -83,7 +83,8 @@ Remote video sends its visible tile height (or zero when hidden) to `SetVideoQua
 
 Screen/camera capture and resolution depend on browser support and the selected source. Reconnect restores the
 microphone and mute/deafen state; screen/camera capture must be explicitly restarted. A Resume audio control
-handles browser autoplay restrictions. TURN/ICE-TCP remain SFU deployment gaps; UDP connectivity is required.
+handles browser autoplay restrictions. When the server configures TURN, the browser adds the relay credentials from `voice.join` to its ICE servers;
+without TURN, direct UDP to the SFU is required. ICE-TCP is not supported.
 Chromium is covered automatically. Safari/Firefox, real-device acoustics, and WAN/NAT/TURN interoperability have
 not been verified here. Spatial positions currently come from the local Lounge layout; moving your avatar
 changes your listening mix but does not broadcast position to other clients (the signaling contract has no
