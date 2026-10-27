@@ -51,7 +51,10 @@ for peer in $PINGO_TURN_PEER_IPS; do
 done
 IFS=$previous_ifs
 if [ -n "${PINGO_TURN_TLS_PORT:-}" ]; then
-  test -r /etc/coturn/certs/fullchain.pem && test -r /etc/coturn/certs/privkey.pem
+  if ! test -r /etc/coturn/certs/fullchain.pem || ! test -r /etc/coturn/certs/privkey.pem; then
+    echo 'TURN TLS needs readable /etc/coturn/certs/fullchain.pem and privkey.pem' >&2
+    exit 2
+  fi
   cat >> "$conf" <<EOF
 tls-listening-port=$PINGO_TURN_TLS_PORT
 cert=/etc/coturn/certs/fullchain.pem
