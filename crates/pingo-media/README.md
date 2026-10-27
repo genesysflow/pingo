@@ -96,12 +96,13 @@ including FEC attempts. It is a packet percentage rather than a sample percentag
 - Loudness normalization integrates roughly 400 ms of gated energy with slow
   gain changes. It is not a certified EBU R128 meter (no K-weighting/true-peak
   meter). Spatial output uses constant-power panning, not HRTF.
-- RTC currently gathers UDP host candidates, uses SDP-only ICE and the existing
+- RTC gathers UDP host and optional TURN relay candidates, uses SDP-only ICE and the existing
   pingo-proto Join/Offer/Answer/PublishTracks contract. It supports server
   re-offers, client-wins glare, RFC 6464, the pingo data channel and track mapping.
   Native clients are verified against the embedded real SFU, including wildcard
-  client/server sockets. STUN/TURN deployment, ICE-TCP, native Opus RED, reconnect
-  remain future work; native video/browser interoperability is covered below. Only 10/20 ms remote Opus
+  client/server sockets. Standalone STUN gathering, ICE-TCP and native Opus RED
+  remain future work; session reconnect/credential renewal is owned by the call controller.
+  Native video/browser interoperability is covered below. Only 10/20 ms remote Opus
   packets are accepted.
 - Hardware hot-plug, acoustic listening quality and real microphone-to-speaker
   latency have not been tested. Seeded 5% loss plus bursts is exercised, but this
@@ -471,7 +472,23 @@ Remaining limits: portal picker approval and real camera/app-monitor capture
 need interactive verification; system audio takes an application-stream snapshot
 at start; cameras require a packed-RGB PipeWire adapter. DMA-BUF import,
 publisher dynacast, macOS/Windows capture implementations, and NVENC remain
-unimplemented. STUN/TURN and reconnect are existing transport limits. See the
+unimplemented. The transport now supports direct UDP and optional TURN/UDP, TURN/TCP and TURN/TLS; see the TURN section below. See the
 encoding section above for source-built OpenH264 patent/bundling obligations and
 the optional system FFmpeg build's GPL/LGPL implications. No shared signaling,
 backend or UI contracts changed; the root Cargo.lock is committed.
+
+## TURN transport
+
+`ClientConfig.ice_servers` accepts the backend admission servers (`pingo_proto::ice::IceServer`).
+`relay_only` is a diagnostic option. All TURN URLs are gathered concurrently with a four-second budget;
+failed allocations leave direct candidates available unless relay-only is requested. TURN authentication,
+permission/channel binding and refresh run outside the DSP worker on bounded I/O queues. TLS validates
+certificates against public and OS trust roots. Dropping a client releases allocations and stops refresh timers.
+
+The web/Tauri controllers obtain fresh admission and rebuild the session five minutes before the one-hour
+REST credentials expire. Standalone callers must implement equivalent credential renewal themselves.
+No SFU signaling messages changed. ICE-TCP and standalone STUN gathering remain absent.
+
+`cargo test -p pingo-media --test turn` covers relay-only native Opus/SCTP using an in-process TURN server.
+`deploy/test-turn.sh --browser` adds real coturn UDP/TCP/TLS, bad credentials, untrusted certificates and
+browser audio/video/data-channel tests. These tests need no audio hardware or public service.

@@ -6,6 +6,8 @@
 
 #[path = "../../../pingo-server/src/access.rs"]
 pub mod access;
+#[path = "../../../pingo-server/src/dev.rs"]
+pub mod dev;
 #[path = "../../../pingo-server/src/dms.rs"]
 pub mod dms;
 #[path = "../../../pingo-server/src/files.rs"]
@@ -89,11 +91,16 @@ impl Server {
                     .access_token,
             );
         }
+        let media_ip: std::net::IpAddr = std::env::var("PINGO_TEST_MEDIA_IP")
+            .unwrap_or_else(|_| "127.0.0.1".into())
+            .parse()
+            .unwrap();
         let media = media::Media::new(pingo_sfu::SfuConfig {
-            udp_bind: "127.0.0.1:0".parse().unwrap(),
-            public_ips: vec!["127.0.0.1".parse().unwrap()],
+            udp_bind: SocketAddr::new(media_ip, 0),
+            public_ips: vec![media_ip],
             ..Default::default()
         });
+        media.start(app.app().clone()).await.unwrap();
         let router = rxferrix::ops::web::router(
             app.app().clone(),
             &rxferrix::ops::WebOptions {

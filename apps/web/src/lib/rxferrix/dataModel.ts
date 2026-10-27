@@ -79,6 +79,8 @@ export type Author = { user: Id<"_users">, name: string, color: string, avatarUr
 
 export type DmSummary = { room: Id<"rooms">, other: Member, unread: number, lastMessageAt: number, };
 
+export type IceServer = { urls: Array<string>, username: string, credential: string, };
+
 export type InboxItem = { _id: Id<"mentions">, kind: InboxKind, message: MessageView, room: InboxRoom, space?: InboxSpace, done: boolean, };
 
 export type InboxKind = "mention" | "reply" | "dm";
@@ -87,7 +89,13 @@ export type InboxRoom = { _id: Id<"rooms">, name: string, kind: RoomKind, };
 
 export type InboxSpace = { _id: Id<"spaces">, name: string, };
 
-export type JoinResult = { token: string, url: "/rtc", };
+export type JoinResult = {
+  token: string,
+  url: "/rtc",
+  iceServers: Array<IceServer>,
+  /** Unix milliseconds; independent of the 60-second SFU admission token. */
+  iceExpiresAt: number | null,
+};
 
 export type Member = { user: Id<"_users">, name: string, color: string, avatarUrl?: string, status: PresenceStatus, roles: Array<Id<"roles">>, };
 

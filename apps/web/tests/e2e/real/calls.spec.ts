@@ -45,8 +45,9 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
   const a = await browser.newContext({ permissions: ['microphone', 'camera'] });
   const b = await browser.newContext({ permissions: ['microphone', 'camera'] });
   for (const context of [a, b])
-    await context.addInitScript(() => {
+    await context.addInitScript((processRelay) => {
       localStorage.setItem('pingo-sound-checked', 'true');
+      if (processRelay) localStorage.setItem('pingo-relay-only', 'true');
       const peers: RTCPeerConnection[] = [];
       window.__peers = peers;
       const sockets: WebSocket[] = [];
@@ -84,7 +85,7 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
         stream.getVideoTracks()[0].addEventListener('ended', () => clearInterval(timer));
         return stream;
       };
-    });
+    }, process.env.PINGO_E2E_RELAY_ONLY === '1');
   const alice = await a.newPage(),
     bob = await b.newPage();
   const errors: string[] = [];
@@ -105,6 +106,17 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     await expect(alice.locator('.stage-tile')).toHaveCount(2);
     await expect.poll(() => inbound(alice, 'audio'), { timeout: 25_000 }).toBeGreaterThan(0);
     await expect.poll(() => inbound(bob, 'audio'), { timeout: 25_000 }).toBeGreaterThan(0);
+    if (process.env.PINGO_E2E_RELAY_ONLY === '1') {
+      for (const page of [alice, bob]) {
+        const relayed = await page.evaluate(async () => {
+          const stats = await window.__peers.at(-1)!.getStats();
+          const transport = [...stats.values()].find(r => r.type === 'transport' && r.selectedCandidatePairId);
+          const pair = stats.get(transport.selectedCandidatePairId);
+          return stats.get(pair.localCandidateId).candidateType;
+        });
+        expect(relayed).toBe('relay');
+      }
+    }
     // Speaking toggles with each syllable. Playwright's default visibility backoff
     // reaches one second and can keep sampling the gaps between them.
     await expect
@@ -151,6 +163,15 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     await bob.keyboard.press('d');
     await expect(alice.locator('.annotation-stroke').first()).toBeVisible();
     await bob.screenshot({ path: 'screenshots/real-call-share.png', animations: 'disabled' });
+    if (process.env.PINGO_E2E_RELAY_ONLY === '1') {
+      // Credential renewal uses the same reconnect path. Keep the capture alive through replacement.
+      const before = await alice.evaluate(() => window.__peers.length);
+      await alice.evaluate(() => window.__rtcSockets.at(-1)!.close());
+      await expect.poll(() => alice.evaluate(() => window.__peers.length), { timeout: 20_000 }).toBeGreaterThan(before);
+      await expect(alice.getByRole('button', { name: 'Stop sharing', exact: true })).toBeVisible();
+      await expect(video).toBeVisible({ timeout: 20_000 });
+      await expect.poll(() => inbound(bob, 'video'), { timeout: 20_000 }).toBeGreaterThan(0);
+    }
     await alice.getByRole('button', { name: 'Stop sharing', exact: true }).click();
     await expect(video).toHaveCount(0);
     const peersBefore = await bob.evaluate(() => window.__peers.length);

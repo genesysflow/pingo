@@ -8,8 +8,9 @@ vi.mock('@tauri-apps/api/core', () => ({ invoke: bridge.invoke }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async (name: string, cb: (e: { payload: unknown }) => void) => {
   bridge.callbacks.set(name, cb); return bridge.stop;
 }) }));
+import type { Admission } from '../src/lib/call/media';
 import { TauriCallController } from '../src/lib/call/tauri.svelte';
-const admission = vi.fn(async () => ({ token: `fresh-${admission.mock.calls.length}`, url: '/rtc' }));
+const admission = vi.fn(async (): Promise<Admission> => ({ token: `fresh-${admission.mock.calls.length}`, url: '/rtc' }));
 let call: TauriCallController;
 async function flush() { for (let i = 0; i < 30; i++) await Promise.resolve(); }
 function joinArgs() { return bridge.invoke.mock.calls.filter(([name]) => name === 'call_join').at(-1)![1] as { sessionId: string; token: string }; }
@@ -52,6 +53,18 @@ describe('native call controller', () => {
     expect(joinArgs().sessionId).not.toBe(old.sessionId);
     event('connected', {}, old.sessionId); expect(call.connection).toBe('reconnecting');
     event('connected'); expect(call.connection).toBe('connected');
+  });
+  test('passes TURN credentials and refreshes admission while retaining mute settings', async () => {
+    const iceServers = [{ urls: ['turns:relay.test:443?transport=tcp'], username: 'temporary', credential: 'temporary-password' }];
+    admission.mockResolvedValueOnce({ token: 'initial-turn', url: '/rtc', iceServers, iceExpiresAt: Date.now() + 301_000 });
+    await call.join('room', 'Friends');
+    expect(joinArgs()).toMatchObject({ iceServers });
+    event('connected'); call.toggleMute();
+    await vi.advanceTimersByTimeAsync(1500); await flush();
+    expect(admission).toHaveBeenCalledTimes(2);
+    expect(joinArgs()).toMatchObject({ settings: { muted: true } });
+    event('connected');
+    expect(call.connection).toBe('connected');
   });
   test('cancelled admission cannot join after leave', async () => {
     let release!: (value: { token: string; url: string }) => void;

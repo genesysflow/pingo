@@ -61,6 +61,9 @@ test.skipIf(!hasCompose)(
     expect(readFileSync(resolve(path, "Caddyfile"), "utf8")).toBe(
       await Bun.file(resolve(root, "deploy/Caddyfile")).text(),
     );
+    expect(readFileSync(resolve(path, "turn-entrypoint.sh"), "utf8")).toBe(
+      await Bun.file(resolve(root, "deploy/turn-entrypoint.sh")).text(),
+    );
     const config = Bun.spawnSync(
       ["docker", "compose", "--profile", "https", "config", "--format", "json"],
       { cwd: path },
@@ -108,4 +111,26 @@ test("the guide offers the script command and a manual Compose example under the
   expect(page).toContain('id="docker-compose"');
   expect(page).toContain("REPLACE_WITH_YOUR_RANDOM_SECRET");
   expect(page).not.toContain("pingo-setup.tar.gz");
+});
+
+test.skipIf(!hasCompose)("TURN setup generates an independent secret and includes the optional relay", () => {
+  const path = directory();
+  const result = configure(path, ["--turn-urls", "turn:relay.example.com:3478?transport=tcp,turns:relay.example.com:443?transport=tcp"]);
+  expect(result.exitCode).toBe(0);
+  const env = readFileSync(resolve(path, ".env"), "utf8");
+  const media = env.match(/^PINGO_MEDIA_SECRET=(.*)$/m)![1];
+  const turn = env.match(/^PINGO_TURN_SECRET=(.*)$/m)![1];
+  expect(turn).toMatch(/^[a-f0-9]{64}$/);
+  expect(turn).not.toBe(media);
+  const config = Bun.spawnSync(["docker", "compose", "--profile", "turn", "config", "--format", "json"], { cwd: path });
+  expect(config.exitCode).toBe(0);
+  const parsed = JSON.parse(config.stdout.toString());
+  expect(parsed.services.turn.network_mode).toBe("host");
+  expect(parsed.services.turn.image).toBe("coturn/coturn:4.6.3");
+});
+
+test("the published relay entrypoint is downloadable beside Compose", async () => {
+  expect(await Bun.file(resolve(site, "dist/downloads/turn-entrypoint.sh")).text()).toBe(
+    await Bun.file(resolve(root, "deploy/turn-entrypoint.sh")).text(),
+  );
 });

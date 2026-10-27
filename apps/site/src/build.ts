@@ -41,6 +41,7 @@ const pageBySource = new Map(pages.map((p) => [p.source, p.slug]));
 const downloadBySource = new Map([
   ["deploy/compose.yaml", "downloads/compose.yaml"],
   ["deploy/Caddyfile", "downloads/Caddyfile"],
+  ["deploy/turn-entrypoint.sh", "downloads/turn-entrypoint.sh"],
   ["deploy/install.sh", "install.sh"],
   [".env.example", "downloads/.env.example"],
 ]);
@@ -90,6 +91,7 @@ await emit("install.sh", installer);
 const setup = {
   "compose.yaml": await readFile(resolve(root, "deploy/compose.yaml"), "utf8"),
   Caddyfile: await readFile(resolve(root, "deploy/Caddyfile"), "utf8"),
+  "turn-entrypoint.sh": await readFile(resolve(root, "deploy/turn-entrypoint.sh"), "utf8"),
   ".env.example": `# Prebuilt Pingo image. Pin a published version or digest to control upgrades.\nPINGO_IMAGE=${image}\n\n${(
     await readFile(resolve(root, ".env.example"), "utf8")
   )

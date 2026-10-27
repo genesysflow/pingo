@@ -33,11 +33,11 @@ Screen resolution, frame rate and system-audio capture depend on the browser, de
 
 Choose open registration, invite-only access, an email allowlist, or combine invites and an allowlist. Pingo includes password sign-in and can use magic links and configured OAuth providers. Email confirmation and magic links need SMTP.
 
-The [self-hosting guide](../../../../docs/SELF_HOSTING.md) covers Docker Compose, HTTPS, networking, access policies, backups and upgrades.
+The [self-hosting guide](../../../../docs/SELF_HOSTING.md) covers Docker Compose, HTTPS, networking and the optional TURN relay, access policies, backups and upgrades.
 
 ## Current boundaries
 
-Pingo is in active development. Calls currently need a reachable UDP port; there is no TURN relay or ICE-TCP fallback. Chat can still work on networks that block outgoing UDP.
+Pingo is in active development. Calls prefer direct UDP to the server's media port. Where a network blocks it, an optional [TURN relay](../../../../docs/SELF_HOSTING.md#optional-turn-relay) can carry calls over UDP, TCP or TLS; you run and configure that relay yourself. There is no ICE-TCP fallback without TURN. Chat works either way.
 
 Chromium has automated browser coverage. Safari, Firefox, physical audio devices and wide-area networking need further verification. Desktop packaging is verified on Linux; macOS and Windows remain unverified. Desktop OAuth browser return and automatic updates are not implemented. See the [web](../../../web/README.md) and [desktop](../../../desktop/README.md) guides for the detailed limits of each client.
 

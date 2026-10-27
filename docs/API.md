@@ -81,7 +81,7 @@ Member         { user, name, color, avatarUrl?, status, roles: Id[] }
 | inbox | `count` | query | – | `number` (not done) |
 | inbox | `markDone` | mutation | `item` | – |
 | inbox | `markAllDone` | mutation | – | – |
-| voice | `join` | mutation | `room` | `{ token, url: "/rtc" }` – signs a `pingo_proto::MediaClaims` token (60 s) with env `PINGO_MEDIA_SECRET`; capabilities from perms |
+| voice | `join` | mutation | `room` | `{ token, url: "/rtc", iceServers: { urls: string[], username: string, credential: string }[], iceExpiresAt: number \| null }` – signs a `pingo_proto::MediaClaims` token (60 s) with env `PINGO_MEDIA_SECRET`; capabilities from perms. Optional coturn REST credentials last one hour; `iceExpiresAt` is Unix milliseconds. TURN disabled: `[]` and `null`. |
 | voice | `participants` | query | `room` | `VoiceParticipant[]` |
 | voice | `setState` | internal mutation | `room, user, muted, deafened, sharingScreen, video` | – (called by the SFU only; upserts `voice_states`) |
 | voice | `left` | internal mutation | `room, user` | – (called by the SFU only) |

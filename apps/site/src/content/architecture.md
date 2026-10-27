@@ -17,7 +17,7 @@ The [backend API contract](../../../../docs/API.md) defines the function names a
 1. A signed-in client calls `voice.join` for a room.
 2. The backend checks permissions and returns a short-lived media token.
 3. The client connects to `/rtc` over a WebSocket and negotiates WebRTC.
-4. Audio and video travel over UDP to the SFU, which forwards tracks to authorized participants.
+4. Audio and video travel over UDP to the SFU, which forwards tracks to authorized participants. When TURN is configured, `voice.join` also returns short-lived relay credentials, and clients that cannot reach the SFU directly route media through the relay.
 5. SFU hooks update durable voice membership in the backend.
 
 Media and signaling types live in `pingo-proto`. Update all consumers together when changing that contract. The [SFU guide](../../../../crates/pingo-sfu/README.md) describes admission, forwarding, simulcast and deployment limits.
@@ -38,6 +38,6 @@ The [native media guide](../../../../crates/pingo-media/README.md) and [noise-su
 
 The self-hosted container includes the backend, embedded SFU and built web app. Caddy is an optional Compose service for HTTPS. Data and uploaded files persist under `/data`.
 
-HTTPS carries the web UI, API, synchronization and call signaling. Media needs its own reachable UDP port, defaulting to `40000`. Pingo currently has no TURN relay or ICE-TCP fallback; see [networking for calls](../../../../docs/SELF_HOSTING.md#calls-behind-nat-and-firewalls).
+HTTPS carries the web UI, API, synchronization and call signaling. Media needs its own reachable UDP port, defaulting to `40000`. An optional coturn sidecar (the `turn` Compose profile) relays calls for clients on networks that block direct UDP; the relay itself still reaches the SFU over UDP. Pingo has no ICE-TCP fallback. See [networking for calls](../../../../docs/SELF_HOSTING.md#calls-behind-nat-and-firewalls) and the [optional TURN relay](../../../../docs/SELF_HOSTING.md#optional-turn-relay).
 
 This documentation site is a separate static build. GitHub Pages serves the presentation and guides; a Pingo application server runs on your own infrastructure.

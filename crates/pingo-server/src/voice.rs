@@ -20,11 +20,79 @@ pub struct VoiceParticipant {
     pub video: bool,
 }
 #[object]
+#[derive(Clone)]
+pub struct IceServer {
+    pub urls: Vec<String>,
+    pub username: String,
+    pub credential: String,
+}
+impl std::fmt::Debug for IceServer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("IceServer")
+            .field("urls", &self.urls)
+            .finish_non_exhaustive()
+    }
+}
+#[object]
 #[derive(Clone, Debug)]
 pub struct JoinResult {
     pub token: String,
     #[ts(type = "\"/rtc\"")]
     pub url: String,
+    pub ice_servers: Vec<IceServer>,
+    /// Unix milliseconds; independent of the 60-second SFU admission token.
+    pub ice_expires_at: Option<f64>,
+}
+
+async fn turn_setting(env: &rxferrix::env::Env, key: &str) -> Result<Option<String>> {
+    // An empty dashboard value disables the process setting too.
+    Ok(env
+        .get(key)
+        .await?
+        .or_else(|| std::env::var(key).ok())
+        .filter(|s| !s.trim().is_empty()))
+}
+
+async fn turn_servers(
+    env: &rxferrix::env::Env,
+    user: Id<User>,
+    now: f64,
+) -> Result<(Vec<IceServer>, Option<f64>)> {
+    let urls = turn_setting(env, "PINGO_TURN_URLS").await?;
+    let secret = turn_setting(env, "PINGO_TURN_SECRET").await?;
+    let (urls, secret) = match (urls, secret) {
+        (None, None) => return Ok((vec![], None)),
+        (Some(urls), Some(secret)) => (urls, secret),
+        _ => {
+            return Err(user_error(
+                "turn_configuration",
+                "Set both PINGO_TURN_URLS and PINGO_TURN_SECRET, or clear both",
+            ));
+        }
+    };
+    let urls: Vec<String> = urls.split(',').map(str::trim).map(str::to_owned).collect();
+    if urls.is_empty()
+        || urls.len() > 8
+        || urls
+            .iter()
+            .any(|url| pingo_proto::ice::TurnUrl::parse(url).is_err())
+    {
+        return Err(user_error(
+            "turn_configuration",
+            "PINGO_TURN_URLS must contain at most 8 comma-separated turn: or turns: URLs",
+        ));
+    }
+    let expiry = (now / 1000.0).floor() as u64 + 3600;
+    let username = format!("{expiry}:{user}");
+    let credential = pingo_proto::ice::turn_password(&username, secret.as_bytes());
+    Ok((
+        vec![IceServer {
+            urls,
+            username,
+            credential,
+        }],
+        Some(expiry as f64 * 1000.0),
+    ))
 }
 // Signing and admission share the exact same missing/empty-key and dev policy.
 pub async fn media_secret(env: &rxferrix::env::Env, dev: bool) -> Result<String> {
@@ -77,6 +145,7 @@ pub async fn join(ctx: &MutationCtx, room: Id<Room>) -> Result<JoinResult> {
     let user = ctx.auth.require_user()?;
     let (_, perms) = require_room(&ctx.db, room, user, Perm::VIEW).await?;
     let secret = media_secret(&ctx.env, ctx.is_dev()).await?;
+    let (ice_servers, ice_expires_at) = turn_servers(&ctx.env, user, ctx.now()).await?;
     let (name, color, _) = crate::profiles::identity(&ctx.db, user).await?;
     let claims = MediaClaims {
         room: room.to_string(),
@@ -91,6 +160,8 @@ pub async fn join(ctx: &MutationCtx, room: Id<Room>) -> Result<JoinResult> {
     Ok(JoinResult {
         token: pingo_proto::token::sign(&claims, secret.as_bytes()),
         url: "/rtc".into(),
+        ice_servers,
+        ice_expires_at,
     })
 }
 pub async fn views(ctx: &QueryCtx, room: Id<Room>) -> Result<Vec<VoiceParticipant>> {

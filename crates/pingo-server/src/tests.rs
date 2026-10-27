@@ -832,6 +832,105 @@ async fn presence_offline_after_150_seconds_and_preserves_dnd() {
     );
 }
 #[tokio::test]
+async fn turn_admission_is_authorized_temporary_and_live_configured() {
+    let f = fixture().await;
+    let plain =
+        f.t.as_user(f.bob)
+            .mutation::<voice::join>((f.room,))
+            .await
+            .unwrap();
+    assert!(plain.ice_servers.is_empty());
+    assert_eq!(plain.ice_expires_at, None);
+    for (key, value) in [
+        (
+            "PINGO_TURN_URLS",
+            "turn:relay.test:3478?transport=udp,turns:relay.test:443?transport=tcp",
+        ),
+        ("PINGO_TURN_SECRET", "turn-test-secret"),
+    ] {
+        f.t.mutation::<rxferrix::env::put>((key.into(), Some(value.into())))
+            .await
+            .unwrap();
+    }
+    let joined =
+        f.t.as_user(f.bob)
+            .mutation::<voice::join>((f.room,))
+            .await
+            .unwrap();
+    let server = &joined.ice_servers[0];
+    let native: pingo_proto::ice::IceServer =
+        serde_json::from_value(serde_json::to_value(server).unwrap()).unwrap();
+    assert_eq!(native.urls, server.urls);
+    assert_eq!(server.urls.len(), 2);
+    let expiry = joined.ice_expires_at.unwrap();
+    let (seconds, user) = server.username.split_once(':').unwrap();
+    assert_eq!(seconds.parse::<f64>().unwrap() * 1000.0, expiry);
+    assert_eq!(user, f.bob.to_string());
+    assert_eq!(
+        server.credential,
+        pingo_proto::ice::turn_password(&server.username, b"turn-test-secret")
+    );
+    assert_eq!(
+        code(
+            f.t.as_user(f.eve)
+                .mutation::<voice::join>((f.room,))
+                .await
+                .err()
+                .unwrap()
+        ),
+        "forbidden"
+    );
+    f.t.advance_time(Duration::from_secs(60)).await.unwrap();
+    let fresh =
+        f.t.as_user(f.bob)
+            .mutation::<voice::join>((f.room,))
+            .await
+            .unwrap();
+    assert!(fresh.ice_expires_at.unwrap() >= expiry + 60_000.0);
+    f.t.mutation::<rxferrix::env::put>(("PINGO_TURN_SECRET".into(), Some("rotated".into())))
+        .await
+        .unwrap();
+    let rotated =
+        f.t.as_user(f.bob)
+            .mutation::<voice::join>((f.room,))
+            .await
+            .unwrap();
+    assert_ne!(
+        fresh.ice_servers[0].credential,
+        rotated.ice_servers[0].credential
+    );
+    f.t.mutation::<rxferrix::env::put>((
+        "PINGO_TURN_URLS".into(),
+        Some("turn:relay.test?transport=invalid".into()),
+    ))
+    .await
+    .unwrap();
+    assert_eq!(
+        code(
+            f.t.as_user(f.bob)
+                .mutation::<voice::join>((f.room,))
+                .await
+                .err()
+                .unwrap()
+        ),
+        "turn_configuration"
+    );
+    f.t.mutation::<rxferrix::env::put>(("PINGO_TURN_URLS".into(), Some(String::new())))
+        .await
+        .unwrap();
+    assert_eq!(
+        code(
+            f.t.as_user(f.bob)
+                .mutation::<voice::join>((f.room,))
+                .await
+                .err()
+                .unwrap()
+        ),
+        "turn_configuration"
+    );
+}
+
+#[tokio::test]
 async fn voice_tokens_capabilities_and_sfu_state() {
     let f = fixture().await;
     let joined =

@@ -165,8 +165,80 @@ Calls need UDP between browsers and `PINGO_PUBLIC_IPS:PINGO_UDP_PORT`:
 - **Linux, simplest networking:** add `network_mode: host` to the `pingo` service and drop its `ports:`. Pingo
   then advertises every interface address itself, and `PINGO_PUBLIC_IPS` becomes optional.
 
-Pingo has no TURN relay yet, so networks that block outgoing UDP (some corporate networks) can't join calls.
-Chat still works there.
+### Optional TURN relay
+
+TURN lets browsers and the native desktop engine reach the SFU when direct client UDP is blocked.
+Direct UDP remains preferred. TURN carries the same encrypted media and data channels; it does not replace
+`/rtc` signaling or the SFU. The relay must be able to send UDP to the SFU's advertised media endpoint.
+
+Pingo supports coturn REST authentication. Set **both** values in `.env` or the dashboard Environment:
+
+```sh
+PINGO_TURN_URLS=turn:turn.example.com:3478?transport=udp,turn:turn.example.com:3478?transport=tcp,turns:turn.example.com:5349?transport=tcp
+PINGO_TURN_SECRET=REPLACE_WITH_A_SEPARATE_RANDOM_SECRET
+```
+
+Generate a separate secret with `openssl rand -hex 32`, and configure coturn with the same
+`static-auth-secret` and `use-auth-secret`. Never use `PINGO_MEDIA_SECRET` for this. Pingo returns temporary
+credentials only after checking room access. They last one hour; clients automatically rejoin with fresh
+credentials five minutes before expiry, briefly interrupting media. Browser screen/camera capture is retained
+across that rejoin. Clear both settings to disable TURN. Partial or invalid configuration rejects call admission
+with a configuration error. The supported URL schemes are `turn:` and `turns:`, with at most eight URLs.
+
+The setup script accepts `--turn-urls 'turn:turn.example.com:3478?transport=tcp'`. It generates a separate
+TURN secret in `.env`; configure your coturn with that secret. It also writes the optional coturn sidecar files.
+No TURN process starts until you explicitly enable the `turn` Compose profile.
+
+For the included **Linux** sidecar, configure:
+
+```sh
+# Alongside PINGO_TURN_URLS and PINGO_TURN_SECRET above:
+PINGO_TURN_RELAY_IP=192.0.2.10
+PINGO_TURN_PUBLIC_IP=203.0.113.10
+PINGO_TURN_PEER_IPS=203.0.113.10
+# Optional TURN/TLS listener; omit both TLS settings for UDP/TCP only:
+PINGO_TURN_TLS_PORT=5349
+PINGO_TURN_CERTS_DIR=./turn-certs
+```
+
+`PINGO_TURN_RELAY_IP` must be assigned to the relay host. When behind NAT, use its private IP here and the
+public IP in `PINGO_TURN_PUBLIC_IP`. `PINGO_TURN_PEER_IPS` allows only the comma-separated SFU candidate
+IPs as relay destinations; all other destinations are denied. For colocated hosts behind NAT without hairpin
+routing, include a reachable LAN candidate in `PINGO_PUBLIC_IPS` and allow that IP too. An existing coturn
+installation needs equivalent destination restrictions and quotas.
+
+Save [turn-entrypoint.sh](../deploy/turn-entrypoint.sh) beside the standalone `compose.yaml` (the source
+checkout already has it under `deploy/`), then run:
+
+```sh
+docker compose --profile https --profile turn up -d
+```
+
+The sidecar uses host networking to avoid thousands of Docker port-forwarding rules. Allow **3478/udp**,
+**3478/tcp**, **5349/tcp** if TLS is enabled, and **49160–49200/udp** for relay allocations. Forward those
+ports when behind NAT. Ports and relay range can be overridden with `PINGO_TURN_PORT`,
+`PINGO_TURN_TLS_PORT`, `PINGO_TURN_MIN_PORT`, and `PINGO_TURN_MAX_PORT`.
+
+TURN/TLS requires a trusted certificate: mount `fullchain.pem` and `privkey.pem` in the certificate directory.
+The native engine trusts WebPKI and system roots; browsers use their own certificate trust. Provision and renew
+these certificates using your certificate manager, then restart coturn after renewal. Caddy's automatic HTTPS
+certificate storage is not automatically shared with coturn.
+
+For networks allowing only port 443, use `turns:turn.example.com:443?transport=tcp` with the TLS listener on
+443 on a **separate host or public IP**. The included Caddy service already binds port 443 on all host IPs;
+using a separate IP on the same host also requires narrowing Caddy's port bindings. An HTTP reverse proxy
+cannot forward TURN. TURN/TCP and TURN/TLS describe the client-to-relay connection; relay-to-SFU traffic
+still uses UDP. Explicit HTTP-proxy-only networks can still block TURN/TLS.
+
+The defaults limit each credential to eight allocations, the relay to 200 allocations, each allocation to
+2,000,000 bytes/s and aggregate allocated bandwidth to 100,000,000 bytes/s. Size the relay range, quotas
+and egress budget for your expected calls. The configured range provides 41 relay ports per relay IP.
+
+To verify a deployment, set `localStorage.setItem('pingo-relay-only', 'true')` in the web/desktop developer
+console and rejoin. Browser WebRTC diagnostics should show a selected `relay` candidate. Remove the key
+afterward. For local automated verification, `deploy/test-turn.sh --browser` runs real coturn UDP/TCP/TLS
+and the browser call test without public services or audio hardware; Docker, OpenSSL, Python, Rust, Bun and
+the existing Playwright browser installation are required.
 
 ## Backups and upgrades
 

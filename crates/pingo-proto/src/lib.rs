@@ -3,6 +3,7 @@
 //! Wire format is JSON with camelCase fields and a `"type"` tag, so the TypeScript side can mirror it by hand
 //! (`apps/web/src/lib/proto.ts`). Keep both in sync when you change anything here.
 
+pub mod ice;
 pub mod signal;
 pub mod token;
 

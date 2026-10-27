@@ -18,6 +18,18 @@ services:
     volumes:
       - pingo-data:/data
 
+  turn:
+    profiles: [turn]
+    image: coturn/coturn:4.6.3
+    restart: unless-stopped
+    # Linux host networking avoids a Docker rule for every relay UDP port.
+    network_mode: host
+    env_file: .env
+    entrypoint: ["/bin/sh", "/etc/coturn/entrypoint.sh"]
+    volumes:
+      - ./deploy/turn-entrypoint.sh:/etc/coturn/entrypoint.sh:ro
+      - ${PINGO_TURN_CERTS_DIR:-./turn-certs}:/etc/coturn/certs:ro
+
   caddy:
     profiles: [https]
     image: caddy:2

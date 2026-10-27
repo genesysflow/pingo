@@ -1,4 +1,9 @@
-/** Mirrors crates/pingo-proto/src/signal.rs. Ephemeral data belongs on the media channel. */
+/** Mirrors crates/pingo-proto. Ephemeral data belongs on the media channel. */
+export interface IceServer {
+  urls: string[];
+  username: string;
+  credential: string;
+}
 export type TrackKind = 'audio' | 'camera' | 'screen' | 'screenAudio';
 export interface ParticipantInfo {
   participantId: string;
