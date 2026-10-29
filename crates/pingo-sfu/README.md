@@ -53,8 +53,12 @@ of a receiver's audio.
 
 VP8 and H.264 use per-subscription simulcast selection. `SetVideoQuality` names
 the receiving mid; height zero pauses it. TWCC/REMB estimates are divided among
-the subscriber's active videos with an audio reserve. RID `max-height` and
-`max-br` attributes determine layer cost. Without those attributes, familiar
+the subscriber's active videos with an audio reserve. The probing target includes
+this reserve so the highest layer's bitrate is reachable. RID `max-height` and
+`max-br` attributes determine layer cost; the browser client advertises actual
+capture dimensions and encoder budgets. A visible view requests a pixel height;
+selection favors the smallest affordable layer covering it, then the highest
+affordable layer if none covers it. Without those attributes, familiar
 `q/h/f` and `l/m/h` RID names determine order; other SDP layers are assumed to
 run from low to high (camera: 180/360/720/1440; screen:
 360/1080/3240), with lower bitrate estimates for screen content to favor detail

@@ -106,7 +106,7 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     const selfCamera = alice.locator('video[aria-label="CallAlice\'s camera"]');
     await alice.getByRole('button', { name: 'Turn camera on', exact: true }).click();
     await expect(selfCamera).toBeVisible();
-    await expect.poll(() => selfCamera.evaluate((node: HTMLVideoElement) => node.videoWidth)).toBeGreaterThan(0);
+    await expect.poll(() => selfCamera.evaluate((node: HTMLVideoElement) => node.videoWidth)).toBe(1920);
     expect(await selfCamera.evaluate((node: HTMLVideoElement) => node.muted)).toBe(true);
     const firstCapture = await selfCamera.evaluateHandle((node: HTMLVideoElement) => node.srcObject as MediaStream);
     await alice.getByRole('button', { name: 'Turn camera off', exact: true }).click();
@@ -161,7 +161,7 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     await expect.poll(() => selfCamera.evaluate((node: HTMLVideoElement) => node.videoWidth)).toBeGreaterThan(0);
     const camera = bob.locator('video[aria-label="CallAlice\'s camera"]');
     await expect(camera).toBeVisible();
-    await expect.poll(() => camera.evaluate((node: HTMLVideoElement) => node.videoWidth)).toBeGreaterThan(0);
+    await expect.poll(() => camera.evaluate((node: HTMLVideoElement) => node.videoWidth), { timeout: 25_000 }).toBeGreaterThanOrEqual(960);
     await alice.getByRole('button', { name: 'Turn camera off', exact: true }).click();
     await expect(selfCamera).toHaveCount(0);
     await expect(camera).toHaveCount(0);
@@ -170,7 +170,8 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     const video = bob.locator('video[aria-label="Shared screen"]');
     await expect(video).toBeVisible({ timeout: 20_000 });
     await expect.poll(() => inbound(bob, 'video'), { timeout: 20_000 }).toBeGreaterThan(0);
-    await expect.poll(() => video.evaluate((node: HTMLVideoElement) => node.videoWidth)).toBeGreaterThan(0);
+    // Receiving bytes alone used to pass while the SFU stayed on the half-size layer.
+    await expect.poll(() => video.evaluate((node: HTMLVideoElement) => node.videoWidth), { timeout: 25_000 }).toBe(1280);
     await bob.locator('.shared-screen').focus();
     await bob.keyboard.press('Enter');
     await expect(alice.locator('.share-pointer')).toBeVisible();

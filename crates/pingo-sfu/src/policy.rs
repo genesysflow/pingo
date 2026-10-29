@@ -211,10 +211,19 @@ pub(crate) fn choose_layer(layers: &[Layer], max_height: u32, budget: u64) -> Op
     }
     layers
         .iter()
-        .rev()
-        .find(|l| l.height <= max_height && l.bitrate <= budget)
+        // A 600px view needs the 720p layer, rather than an upscaled 360p layer.
+        .find(|l| l.height >= max_height && l.bitrate <= budget)
+        .or_else(|| layers.iter().rev().find(|l| l.bitrate <= budget))
         .or_else(|| layers.first())
         .map(|l| l.rid)
+}
+
+/// Include the same transport reserve deducted when selecting layers, so full quality is reachable.
+pub(crate) fn video_transport_budget(video_bitrate: u64) -> u64 {
+    video_bitrate
+        .saturating_mul(10)
+        .div_ceil(8)
+        .saturating_add(128_000)
 }
 
 #[cfg(test)]
@@ -368,7 +377,9 @@ mod tests {
         ];
         let layers = layers(&source, false);
         assert_eq!(choose_layer(&layers, 720, 1_000_000), Some("h".into()));
-        assert_eq!(choose_layer(&layers, 360, 1_000_000), Some("q".into()));
+        assert_eq!(choose_layer(&layers, 360, 1_000_000), Some("h".into()));
+        assert_eq!(choose_layer(&layers, 180, 1_000_000), Some("q".into()));
+        assert_eq!(choose_layer(&layers, 1080, 1_000_000), Some("h".into()));
         assert_eq!(choose_layer(&layers, 720, 200_000), Some("q".into()));
         assert_eq!(choose_layer(&layers, 0, 1_000_000), None);
         assert!(super::layers(&[SimulcastLayer::new("q")], true)[0].bitrate < 360 * 1800);
@@ -389,5 +400,28 @@ mod tests {
             false,
         );
         assert_eq!(large[0].height, 16_384);
+    }
+
+    #[test]
+    fn advertised_browser_screen_layers_can_reach_full_quality() {
+        let layers = layers(
+            &[
+                SimulcastLayer::new_with_attributes("q")
+                    .max_height(540)
+                    .max_br(3_000_000)
+                    .build(),
+                SimulcastLayer::new_with_attributes("f")
+                    .max_height(1080)
+                    .max_br(12_000_000)
+                    .build(),
+            ],
+            true,
+        );
+        let transport = video_transport_budget(12_000_000);
+        let budget = transport.saturating_sub(128_000) * 8 / 10;
+        assert_eq!(choose_layer(&layers, 800, budget), Some("f".into()));
+        assert_eq!(choose_layer(&layers, 800, 4_000_000), Some("q".into()));
+        assert_eq!(choose_layer(&layers, 0, budget), None);
+        assert_eq!(choose_layer(&layers, 540, budget), Some("q".into()));
     }
 }

@@ -357,8 +357,8 @@ impl Peer {
                 !t.removed && t.max_height > 0 && policy::media_kind(t.source.kind).is_video()
             })
             .map(|t| t.source.layers.last().map_or(2_000_000, |l| l.bitrate))
-            .sum::<u64>()
-            .saturating_add(128_000);
+            .sum::<u64>();
+        let desired = policy::video_transport_budget(desired);
         self.rtc.bwe().set_desired_bitrate(Bitrate::bps(desired));
     }
 

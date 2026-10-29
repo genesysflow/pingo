@@ -2,7 +2,7 @@ import { CallState } from './controller.svelte';
 import type { AudioSettings, CallController } from './controller.svelte';
 import type { AudioProfile } from '../data/types';
 import type { ClientMsg, ServerMsg, DataMsg, TrackInfo, TrackKind, ParticipantInfo } from '../proto';
-import { configureSdp, qualityLabel, ReconnectPolicy, screenConstraints, gatheredDescription, iceRenewalDelay, type Admission } from './media';
+import { configureSdp, configureVideoSdp, cameraConstraints, videoEncodings, qualityLabel, ReconnectPolicy, screenConstraints, gatheredDescription, iceRenewalDelay, type Admission } from './media';
 import { Microphone } from './microphone';
 import { errorMessage } from '../data/errors';
 
@@ -106,8 +106,8 @@ export class BrowserCallController extends CallState implements CallController {
       iceServers: admission.iceServers ?? [],
       iceTransportPolicy: localStorage.getItem('pingo-relay-only') === 'true' ? 'relay' : 'all',
     }));
-    if (this.display?.getVideoTracks().some(t => t.readyState === 'live')) this.addVideo(this.display, 'screen');
-    if (this.webcam?.getVideoTracks().some(t => t.readyState === 'live')) this.addVideo(this.webcam, 'camera');
+    if (this.display?.getVideoTracks().some(t => t.readyState === 'live')) await this.addVideo(this.display, 'screen');
+    if (this.webcam?.getVideoTracks().some(t => t.readyState === 'live')) await this.addVideo(this.webcam, 'camera');
     const renewIn = iceRenewalDelay(admission.iceExpiresAt);
     if (renewIn !== null) this.renewalTimer = setTimeout(() => this.reconnect(generation), renewIn);
     microphone.enabled = !this.muted;
@@ -203,7 +203,7 @@ export class BrowserCallController extends CallState implements CallController {
           type: 'answer',
           sdp: configureSdp((await pc.createAnswer()).sdp!, this.audio.studio ? 'studio' : this.profile),
         });
-        this.signal({ type: 'answer', sdp: await gatheredDescription(pc) });
+        this.signal({ type: 'answer', sdp: await this.description(pc) });
         break;
       case 'answer':
         if (pc.signalingState === 'have-local-offer')
@@ -271,7 +271,7 @@ export class BrowserCallController extends CallState implements CallController {
       type: 'offer',
       sdp: configureSdp((await pc.createOffer()).sdp!, this.audio.studio ? 'studio' : this.profile),
     });
-    const sdp = await gatheredDescription(pc);
+    const sdp = await this.description(pc);
     if (generation !== this.generation) return;
     this.signal({ type: 'offer', sdp });
     this.screenMid = [...this.published].find(([, kind]) => kind === 'screen')?.[0].mid ?? '';
@@ -281,6 +281,16 @@ export class BrowserCallController extends CallState implements CallController {
         transceiver.mid !== null && transceiver.sender.track ? [{ mid: transceiver.mid, kind }] : [],
       ),
     });
+  }
+  private async description(pc: RTCPeerConnection) {
+    const sdp = await gatheredDescription(pc);
+    // Enrich only the signaling copy: browsers can strip RID restrictions from localDescription.
+    return configureVideoSdp(sdp, [...this.published].flatMap(([transceiver, kind]) => {
+      const height = transceiver.sender.track?.getSettings().height;
+      return (kind === 'screen' || kind === 'camera') && transceiver.mid !== null && height
+        ? [{ mid: transceiver.mid, height, encodings: transceiver.sender.getParameters().encodings }]
+        : [];
+    }));
   }
   private attach(mid: string) {
     const info = this.tracks.get(mid),
@@ -377,7 +387,7 @@ export class BrowserCallController extends CallState implements CallController {
         this.error = errorMessage(error);
       });
   }
-  private addVideo(stream: MediaStream, kind: 'screen' | 'camera') {
+  private async addVideo(stream: MediaStream, kind: 'screen' | 'camera') {
     const pc = this.pc;
     if (!pc) {
       stream.getTracks().forEach((t) => t.stop());
@@ -387,17 +397,20 @@ export class BrowserCallController extends CallState implements CallController {
       const trackKind = track.kind === 'audio' ? 'screenAudio' : kind;
       let transceiver: RTCRtpTransceiver;
       const init: RTCRtpTransceiverInit = { direction: 'sendonly', streams: [stream] };
-      if (track.kind === 'video')
-        init.sendEncodings = [
-          { rid: 'q', scaleResolutionDownBy: 2, maxBitrate: 350_000 },
-          { rid: 'f', scaleResolutionDownBy: 1, maxBitrate: kind === 'screen' ? 5_000_000 : 2_000_000 },
-        ];
+      if (track.kind === 'video') init.sendEncodings = videoEncodings(kind);
       try {
         transceiver = pc.addTransceiver(track, init);
       } catch {
         transceiver = pc.addTransceiver(track, { direction: 'sendonly', streams: [stream] });
       }
       this.published.set(transceiver, trackKind);
+      if (track.kind === 'video') {
+        const parameters = transceiver.sender.getParameters();
+        parameters.degradationPreference = kind === 'screen' ? 'maintain-resolution' : 'balanced';
+        await transceiver.sender.setParameters(parameters).catch(() => {
+          // Older browsers still use the capture constraints and content hint.
+        });
+      }
       if (track.kind === 'video')
         track.onended = () => {
           if (kind === 'screen' && this.sharing) this.toggleShare();
@@ -441,7 +454,7 @@ export class BrowserCallController extends CallState implements CallController {
               stream
                 .getVideoTracks()
                 .forEach((t) => (t.contentHint = this.shareMode === 'Text' ? 'detail' : 'motion'));
-              this.addVideo(stream, 'screen');
+              await this.addVideo(stream, 'screen');
               await this.offer();
             },
             () => stream.getTracks().forEach((t) => t.stop()),
@@ -465,7 +478,7 @@ export class BrowserCallController extends CallState implements CallController {
     if (!this.camera) {
       const generation = this.generation;
       const capture = navigator.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720 },
+        video: cameraConstraints(),
         audio: false,
       });
       void capture
@@ -483,7 +496,8 @@ export class BrowserCallController extends CallState implements CallController {
               this.webcam = stream;
               this.localCamera = stream;
               this.camera = true;
-              this.addVideo(stream, 'camera');
+              stream.getVideoTracks().forEach(t => (t.contentHint = 'motion'));
+              await this.addVideo(stream, 'camera');
               await this.offer();
             },
             () => stream.getTracks().forEach((t) => t.stop()),
@@ -504,9 +518,12 @@ export class BrowserCallController extends CallState implements CallController {
   }
   override setShareMode(mode: 'Text' | 'Motion') {
     super.setShareMode(mode);
-    this.display?.getVideoTracks().forEach((t) => {
-      t.contentHint = mode === 'Text' ? 'detail' : 'motion';
-      void t.applyConstraints(screenConstraints(mode)).catch((e) => (this.error = errorMessage(e)));
+    this.control(async () => {
+      for (const track of this.display?.getVideoTracks() ?? []) {
+        track.contentHint = mode === 'Text' ? 'detail' : 'motion';
+        await track.applyConstraints(screenConstraints(mode));
+      }
+      if (this.display) await this.offer();
     });
   }
   private async selectSpeaker() {
