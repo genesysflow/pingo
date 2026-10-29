@@ -102,6 +102,7 @@ test('leaving during setup closes late resources without publishing them', async
   call.setBackgroundBlur(true);
   await Promise.resolve();
   call.leave();
+  expect((processor.open.mock.calls[0][2] as AbortSignal).aborted).toBe(true);
   loaded({ stream: output.stream, stop });
   await flush();
   expect(stop).toHaveBeenCalledOnce();

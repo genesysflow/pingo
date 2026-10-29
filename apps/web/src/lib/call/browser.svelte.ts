@@ -19,6 +19,7 @@ export class BrowserCallController extends CallState implements CallController {
   private webcam?: MediaStream;
   private cameraSource?: MediaStream;
   private cameraBlur?: BackgroundBlur;
+  private cameraBlurStartup?: AbortController;
   override backgroundBlurSupported = supportsBackgroundBlur();
   private context?: AudioContext;
   private output?: HTMLAudioElement;
@@ -550,14 +551,22 @@ export class BrowserCallController extends CallState implements CallController {
         }
       });
   }
-  private openCameraBlur(stream: MediaStream) {
-    return BackgroundBlur.open(stream, (error) => {
-      if (this.cameraSource === stream) this.stopFailedCamera(`Background blur stopped: ${errorMessage(error)}`);
-    });
+  private async openCameraBlur(stream: MediaStream) {
+    const startup = new AbortController();
+    this.cameraBlurStartup = startup;
+    try {
+      return await BackgroundBlur.open(stream, (error) => {
+        if (this.cameraSource === stream) this.stopFailedCamera(`Background blur stopped: ${errorMessage(error)}`);
+      }, startup.signal);
+    } finally {
+      if (this.cameraBlurStartup === startup) this.cameraBlurStartup = undefined;
+    }
   }
   private stopCameraCapture() {
     this.camera = false;
     this.localCamera = null;
+    this.cameraBlurStartup?.abort();
+    this.cameraBlurStartup = undefined;
     this.cameraBlur?.stop();
     this.cameraBlur = undefined;
     this.cameraSource?.getTracks().forEach(track => track.stop());

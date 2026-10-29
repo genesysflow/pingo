@@ -165,7 +165,9 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     const blur = alice.getByRole('button', { name: 'Blur camera background', exact: true });
     await blur.click();
     await expect(blur).toHaveAttribute('aria-pressed', 'true', { timeout: 25_000 });
-    await expect.poll(() => selfCamera.evaluate((node: HTMLVideoElement) => node.videoHeight)).toBeLessThanOrEqual(720);
+    await expect.poll(() => selfCamera.evaluate((node: HTMLVideoElement) => node.videoHeight)).toBeGreaterThanOrEqual(720);
+    expect(await selfCamera.evaluate((node: HTMLVideoElement) =>
+      (node.srcObject as MediaStream).getVideoTracks()[0].getSettings().frameRate)).toBe(30);
     const blurredBytes = await inbound(bob, 'video');
     await expect.poll(() => inbound(bob, 'video')).toBeGreaterThan(blurredBytes);
     await blur.click();

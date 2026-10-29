@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-import { BackgroundBlur, personMask, supportsBackgroundBlur } from '../src/lib/call/background-blur';
+import { BackgroundBlur, supportsBackgroundBlur } from '../src/lib/call/background-blur';
+import type { BlurWorkerResponse } from '../src/lib/call/blur-worker-protocol';
 
-const model = vi.hoisted(() => ({ create: vi.fn(), segment: vi.fn(), close: vi.fn() }));
-vi.mock('../src/lib/call/segmentation', () => ({ createSegmenter: model.create }));
+vi.mock('../src/lib/call/background-blur-worker.ts?worker&url', () => ({ default: '/worker-module.js' }));
 
-let video: {
+type FakeVideo = {
   play: ReturnType<typeof vi.fn>;
   pause: ReturnType<typeof vi.fn>;
   srcObject: unknown;
@@ -12,16 +12,61 @@ let video: {
   videoHeight: number;
   readyState: number;
   currentTime: number;
+  requestVideoFrameCallback?: ReturnType<typeof vi.fn>;
+  cancelVideoFrameCallback?: ReturnType<typeof vi.fn>;
 };
+
+function bitmap() {
+  return { width: 256, height: 144, close: vi.fn() } as unknown as ImageBitmap;
+}
+
+class FakeWorker {
+  onmessage: ((event: MessageEvent<BlurWorkerResponse>) => void) | null = null;
+  onerror: ((event: ErrorEvent) => void) | null = null;
+  onmessageerror: (() => void) | null = null;
+  terminate = vi.fn();
+  postMessage = vi.fn((data) => {
+    if (data.type === 'load' && initialize) queueMicrotask(() => this.emit({ type: 'loaded' }));
+    if (data.type === 'init' && initialize)
+      queueMicrotask(() => this.emit({ type: 'ready', delegate: 'GPU' }));
+    if (data.type === 'frame' && replyFrames)
+      queueMicrotask(() => {
+        data.image.close();
+        const image = bitmap();
+        masks.push(image);
+        this.emit({ type: 'mask', image, timestamp: data.timestamp, duration: 5, delegate: 'GPU' });
+      });
+  });
+  constructor() {
+    workers.push(this);
+  }
+  emit(data: BlurWorkerResponse) {
+    this.onmessage?.({ data } as MessageEvent<BlurWorkerResponse>);
+  }
+}
+
+let video: FakeVideo;
+let workers: FakeWorker[];
+let masks: ImageBitmap[];
+let initialize: boolean;
+let replyFrames: boolean;
 let outputTrack: { stop: ReturnType<typeof vi.fn>; contentHint: string };
 let rawTrack: { stop: ReturnType<typeof vi.fn> };
 let raw: MediaStream;
 let context: CanvasRenderingContext2D;
+let capture: ReturnType<typeof vi.fn>;
 let tick: FrameRequestCallback;
+
+async function flush() {
+  for (let turn = 0; turn < 12; turn++) await Promise.resolve();
+}
 
 beforeEach(() => {
   vi.useFakeTimers();
   vi.clearAllMocks();
+  workers = [];
+  masks = [];
+  initialize = replyFrames = true;
   video = {
     play: vi.fn().mockResolvedValue(undefined),
     pause: vi.fn(),
@@ -34,15 +79,10 @@ beforeEach(() => {
   rawTrack = { stop: vi.fn() };
   outputTrack = { stop: vi.fn(), contentHint: '' };
   raw = { getTracks: () => [rawTrack] } as unknown as MediaStream;
-  const output = { getTracks: () => [outputTrack], getVideoTracks: () => [outputTrack] };
-  context = {
-    filter: 'none',
-    drawImage: vi.fn(),
-    clearRect: vi.fn(),
-    putImageData: vi.fn(),
-    createImageData: (width: number, height: number) => ({ data: new Uint8ClampedArray(width * height * 4) }),
-  } as unknown as CanvasRenderingContext2D;
+  capture = vi.fn(() => ({ getTracks: () => [outputTrack], getVideoTracks: () => [outputTrack] }));
+  context = { filter: 'none', drawImage: vi.fn(), clearRect: vi.fn() } as unknown as CanvasRenderingContext2D;
   vi.stubGlobal('document', {
+    baseURI: 'http://pingo.test/app/',
     createElement: (tag: string) =>
       tag === 'video'
         ? video
@@ -50,9 +90,15 @@ beforeEach(() => {
             width: 0,
             height: 0,
             getContext: () => context,
-            captureStream: () => output,
+            captureStream: capture,
           },
   });
+  vi.stubGlobal('Worker', FakeWorker);
+  vi.stubGlobal('OffscreenCanvas', class {});
+  vi.stubGlobal(
+    'createImageBitmap',
+    vi.fn(async () => bitmap()),
+  );
   vi.stubGlobal(
     'requestAnimationFrame',
     vi.fn((callback: FrameRequestCallback) => {
@@ -61,12 +107,6 @@ beforeEach(() => {
     }),
   );
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
-  model.segment.mockImplementation((_video, _time, callback) =>
-    callback({
-      confidenceMasks: [{ width: 2, height: 1, getAsFloat32Array: () => new Float32Array([0, 1]) }],
-    }),
-  );
-  model.create.mockResolvedValue({ segmentForVideo: model.segment, close: model.close });
 });
 afterEach(() => {
   vi.useRealTimers();
@@ -74,74 +114,140 @@ afterEach(() => {
 });
 
 describe('background blur', () => {
-  test('keeps people opaque and the background transparent in the sharp layer', () => {
-    const pixels = new Uint8ClampedArray(12);
-    personMask(new Float32Array([0, 0.5, 1]), pixels);
-    expect(Array.from(pixels)).toEqual([255, 255, 255, 0, 255, 255, 255, 128, 255, 255, 255, 255]);
-  });
-  test('hides support when canvas filtering or stream capture is missing', () => {
+  test('requires off-thread support and canvas filtering', () => {
     expect(supportsBackgroundBlur()).toBe(true);
-    vi.stubGlobal('document', { createElement: () => ({ getContext: () => ({}) }) });
+    vi.stubGlobal('Worker', undefined);
     expect(supportsBackgroundBlur()).toBe(false);
   });
-  test('sends a processed stream and releases only its own resources', async () => {
+  test('publishes 1080p30 only after a worker-generated mask, then frees owned resources', async () => {
     const blur = await BackgroundBlur.open(raw, vi.fn());
     expect(blur.stream).not.toBe(raw);
-    expect(model.segment).toHaveBeenCalledTimes(1);
-    expect(context.drawImage).toHaveBeenCalled();
-    expect(outputTrack.contentHint).toBe('motion');
+    expect(capture).toHaveBeenCalledWith(30);
+    expect(blur.diagnostics).toMatchObject({ width: 1920, height: 1080, targetFps: 30, delegate: 'GPU' });
+    expect(createImageBitmap).toHaveBeenCalledWith(video, {
+      resizeWidth: 256,
+      resizeHeight: 144,
+      resizeQuality: 'low',
+    });
+    expect(context.drawImage).toHaveBeenCalledWith(masks[0], 0, 0, 1920, 1080);
     blur.stop();
     blur.stop();
-    expect(outputTrack.stop).toHaveBeenCalledTimes(1);
+    expect(outputTrack.stop).toHaveBeenCalledOnce();
     expect(rawTrack.stop).not.toHaveBeenCalled();
-    expect(model.close).toHaveBeenCalledTimes(1);
+    expect(workers[0].terminate).toHaveBeenCalledOnce();
+    expect(masks[0].close).toHaveBeenCalledOnce();
     expect(video.srcObject).toBeNull();
     expect(cancelAnimationFrame).toHaveBeenCalledWith(1);
   });
-  test('does not reprocess duplicate frames', async () => {
+  test('renders at 30 FPS while a single segmentation request is still in flight', async () => {
     const blur = await BackgroundBlur.open(raw, vi.fn());
+    replyFrames = false;
+    vi.mocked(context.drawImage).mockClear();
     video.currentTime = 1;
-    tick(1000);
-    tick(1100);
-    expect(model.segment).toHaveBeenCalledTimes(2);
+    tick(34);
+    await flush();
+    video.currentTime = 2;
+    tick(67);
+    video.currentTime = 3;
+    tick(100);
+    expect(createImageBitmap).toHaveBeenCalledTimes(2);
+    expect(context.drawImage).toHaveBeenCalledTimes(12);
+    blur.stop();
+    await flush();
+  });
+  test('does not process or render duplicate camera frames', async () => {
+    const blur = await BackgroundBlur.open(raw, vi.fn());
+    vi.mocked(context.drawImage).mockClear();
+    tick(100);
+    tick(200);
+    expect(createImageBitmap).toHaveBeenCalledTimes(1);
+    expect(context.drawImage).not.toHaveBeenCalled();
     blur.stop();
   });
-  test('stops processed output on inference failure instead of sending raw video', async () => {
+  test('fully blurs fresh video rather than applying an old person mask', async () => {
+    const blur = await BackgroundBlur.open(raw, vi.fn());
+    replyFrames = false;
+    vi.mocked(context.drawImage).mockClear();
+    video.currentTime = 1;
+    tick(300);
+    expect(context.drawImage).toHaveBeenCalledTimes(1);
+    expect(context.drawImage).toHaveBeenCalledWith(video, -60, -60, 2040, 1200);
+    blur.stop();
+    await flush();
+  });
+  test('stops processed output when the worker fails, without falling back to raw video', async () => {
     const failed = vi.fn();
     const blur = await BackgroundBlur.open(raw, failed);
-    model.segment.mockImplementationOnce(() => {
-      throw new Error('inference failed');
-    });
-    video.currentTime = 1;
-    tick(1000);
+    workers[0].emit({ type: 'error', message: 'inference failed' });
     expect(failed).toHaveBeenCalledWith(expect.objectContaining({ message: 'inference failed' }));
     expect(outputTrack.stop).toHaveBeenCalledOnce();
-    expect(model.close).toHaveBeenCalledOnce();
+    expect(workers[0].terminate).toHaveBeenCalledOnce();
     expect(rawTrack.stop).not.toHaveBeenCalled();
     blur.stop();
   });
-  test('cleans up failed initialization without producing a stream', async () => {
-    model.segment.mockImplementationOnce(() => {
-      throw new Error('no mask');
-    });
-    await expect(BackgroundBlur.open(raw, vi.fn())).rejects.toThrow('no mask');
-    expect(model.close).toHaveBeenCalledOnce();
-    expect(video.srcObject).toBeNull();
-    expect(requestAnimationFrame).not.toHaveBeenCalled();
-  });
-  test('closes a model that finishes loading after startup timed out', async () => {
-    let loaded!: (value: unknown) => void;
-    model.create.mockReturnValueOnce(
-      new Promise((resolve) => {
-        loaded = resolve;
-      }),
-    );
+  test('terminates a worker whose initialization times out', async () => {
+    initialize = false;
     const result = expect(BackgroundBlur.open(raw, vi.fn())).rejects.toThrow('too long');
     await vi.advanceTimersByTimeAsync(20_000);
     await result;
-    loaded({ close: model.close });
-    await Promise.resolve();
-    expect(model.close).toHaveBeenCalledOnce();
+    expect(workers[0].terminate).toHaveBeenCalledOnce();
+    expect(outputTrack.stop).toHaveBeenCalledOnce();
     expect(video.srcObject).toBeNull();
+  });
+  test('immediately terminates pending startup when its call is cancelled', async () => {
+    initialize = false;
+    const controller = new AbortController();
+    const result = expect(BackgroundBlur.open(raw, vi.fn(), controller.signal)).rejects.toMatchObject({
+      name: 'AbortError',
+    });
+    await flush();
+    controller.abort();
+    await result;
+    expect(workers[0].terminate).toHaveBeenCalledOnce();
+    expect(outputTrack.stop).toHaveBeenCalledOnce();
+    expect(video.srcObject).toBeNull();
+  });
+  test('bounds a hung segmentation request and fails closed', async () => {
+    const failed = vi.fn();
+    const blur = await BackgroundBlur.open(raw, failed);
+    replyFrames = false;
+    video.currentTime = 1;
+    tick(34);
+    await flush();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(failed).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'Background segmentation stopped responding.' }),
+    );
+    expect(outputTrack.stop).toHaveBeenCalledOnce();
+    blur.stop();
+  });
+  test('closes a bitmap created after shutdown without posting another worker request', async () => {
+    const blur = await BackgroundBlur.open(raw, vi.fn());
+    let created!: (image: ImageBitmap) => void;
+    vi.mocked(createImageBitmap).mockReturnValueOnce(
+      new Promise((resolve) => {
+        created = resolve;
+      }),
+    );
+    video.currentTime = 1;
+    tick(34);
+    blur.stop();
+    const late = bitmap();
+    created(late);
+    await flush();
+    expect(late.close).toHaveBeenCalledOnce();
+    expect(workers[0].postMessage.mock.calls.filter(([data]) => data.type === 'frame')).toHaveLength(1);
+  });
+  test('uses decoded video callbacks when available and cancels them on shutdown', async () => {
+    video.requestVideoFrameCallback = vi.fn((callback) => {
+      tick = callback;
+      return 4;
+    });
+    video.cancelVideoFrameCallback = vi.fn();
+    const blur = await BackgroundBlur.open(raw, vi.fn());
+    expect(video.requestVideoFrameCallback).toHaveBeenCalledOnce();
+    expect(requestAnimationFrame).not.toHaveBeenCalled();
+    blur.stop();
+    expect(video.cancelVideoFrameCallback).toHaveBeenCalledWith(4);
   });
 });

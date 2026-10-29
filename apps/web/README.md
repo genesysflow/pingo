@@ -115,11 +115,20 @@ Person segmentation and compositing run on your device, before WebRTC encoding, 
 other participants see the processed feed. Screen sharing is not affected. The model and WASM runtime are
 served by Pingo, with no third-party requests at runtime. They load only when blur is enabled.
 
-Blur currently caps camera output at 720p and 15 FPS to limit processing cost. Segmentation runs on the
-browser's main thread, so slower devices may experience reduced responsiveness. Person boundaries can be
-imperfect: this is a visual effect, not a guarantee that sensitive background details are hidden. Unsupported
-browsers do not show the option. A startup failure leaves an already-running camera unchanged (or keeps a
-new camera off); a processing failure stops the camera rather than falling back to an unblurred feed.
+Blur targets the camera's native resolution up to 1080p at 30 FPS. Segmentation runs in a dedicated worker,
+preferring the GPU and falling back to CPU inference in that worker if GPU setup or inference fails. Only one
+downscaled frame (at most 256 pixels per side) is in flight at a time. Mask updates adapt to measured latency
+(up to 30 per second); rendering continues independently using the latest mask. Canvas compositing remains
+on the rendering thread and steps down to 720p, then 540p under sustained load, recovering quality gradually
+when rendering becomes inexpensive again. These are targets, not a guarantee of frame rate on every device.
+
+Masks older than 250 ms are not reused: those frames are fully blurred until a fresh mask arrives. A worker
+that stops responding for five seconds stops the camera. Person boundaries can still be imperfect: this is a
+visual effect, not a guarantee that sensitive background details are hidden. Browsers without workers,
+OffscreenCanvas, ImageBitmap capture, or canvas filtering do not show the option. A startup failure leaves an
+already-running camera unchanged (or keeps a new camera off); a processing failure stops the camera rather
+than falling back to an unblurred feed. Model and pixel tests run in Chromium; other browsers and actual
+hardware acceleration across GPUs still need device coverage.
 Native desktop camera sending remains unavailable, so desktop background blur is not offered yet.
 
 ## Verification
@@ -129,6 +138,7 @@ cd apps/web
 bun run check
 bun run test
 bun run build
+VITE_PINGO_MOCK=1 bun run test:e2e background-blur.spec.ts
 # Build once before the E2E runner starts the binary:
 (cd ../.. && cargo build -p pingo-server)
 bun run test:e2e
@@ -145,6 +155,8 @@ avoid a headless capture dialog; production capture, negotiation, SFU forwarding
 
 The suites exercise two-context auth/invites, live messages, reactions/threads, unread/read state, mentions,
 DMs/inbox completion, history pagination, uploads/search/edit/delete, profile/room settings, and email codes.
+The standalone blur suite uses the real model and measures output cadence and UI timers with normal GPU
+setup, artificially delayed mask replies, and forced GPU initialization failure to exercise CPU fallback.
 Calls assert remote audio bytes in both directions, speaking and mute, real camera/screen decode, sidebar voice
 state, reactions/hands/pointers/strokes, and reconnect. Vitest covers SDP, Studio constraints, stats labels,
 retry policy, message parsing/grouping, pagination, and spatial mixing. Real-data screenshots are refreshed at
