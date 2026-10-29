@@ -6,8 +6,8 @@
       "name": "@pingo/web",
       "dependencies": {
         "@lucide/svelte": "^1.61.0",
-        "@rxferrix/client": "0.7.0",
-        "@rxferrix/svelte": "0.7.0",
+        "@rxferrix/client": "0.9.0",
+        "@rxferrix/svelte": "0.9.0",
         "@tauri-apps/api": "^2",
         "dompurify": "^3.2.6",
         "marked": "^15.0.12",
@@ -145,9 +145,9 @@
 
     "@rollup/rollup-win32-x64-msvc": ["@rollup/rollup-win32-x64-msvc@4.65.0", "", { "os": "win32", "cpu": "x64" }, "sha512-wPWi++K4Bs1VR4XihOhfGi4IGX6Cub7FlerTf8X2v+2BtDHddgSqWCXwGD+h2yAe4/niIhNDwAltioOC+wEogQ=="],
 
-    "@rxferrix/client": ["@rxferrix/client@0.7.0", "", {}, "sha512-0hhupfJN6IWlLJwMDz5GQ6z9EEYfAnlgcjggP0CweRm8TRKLWc+C98SsobQrrqH5/UxsPb+IxzRSPsluZz3XtQ=="],
+    "@rxferrix/client": ["@rxferrix/client@0.9.0", "", {}, "sha512-S7uXKbYV4epWuUy+M5JQjSSx3zOFoBEY8e/8fhieoFh80fdES6c6ac9kfWXzkj3nCnRHprtZ92PFzSz0MaphWw=="],
 
-    "@rxferrix/svelte": ["@rxferrix/svelte@0.7.0", "", { "dependencies": { "@rxferrix/client": "0.7.0" }, "peerDependencies": { "svelte": "^5.0.0" } }, "sha512-GwK7i5JPIt84pC+m0rIjf/K24vtRK7I+kaIP/3v7R/OwQIJISB7c1AsmApboCJ9FrYTOF8PuOCHKMhFqu1uCrA=="],
+    "@rxferrix/svelte": ["@rxferrix/svelte@0.9.0", "", { "dependencies": { "@rxferrix/client": "0.9.0" }, "peerDependencies": { "svelte": "^5.0.0" } }, "sha512-M6ruwznvpx80pG/SoIsjeEjwcxuCIMsSFb1LNT4nirCAkJCzcaeqqC861NLHLO4V1U5IIZYsMKnE9cV8995E5g=="],
 
     "@sveltejs/acorn-typescript": ["@sveltejs/acorn-typescript@1.0.13", "", { "peerDependencies": { "acorn": "^8.9.0" } }, "sha512-wgKggnhZVL9Bfx1OaKKTrYY9BFRk6C8UAkQNUcIv1+llzYrIqy+RZm5HPKzn0NpEBvTVhTqB4kQyllZywsRBRQ=="],
 

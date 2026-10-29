@@ -6082,9 +6082,9 @@ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
 name = "rxferrix"
-version = "0.7.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c8f903e5bfc73e845403014bbefc84472e64225484a146dffcc71147c83b9124"
+checksum = "787e8baf3a7ea2af89b91556df8515e297da6399264356ccb50f67eeb5dca6dc"
 dependencies = [
  "anyhow",
  "argon2",
@@ -6102,6 +6102,7 @@ dependencies = [
  "futures",
  "hmac 0.13.0",
  "image",
+ "ipnet",
  "lettre",
  "linkme",
  "mime_guess",
@@ -6115,6 +6116,7 @@ dependencies = [
  "rust-stemmers",
  "rustls",
  "rustls-acme",
+ "rustls-webpki",
  "rxferrix-macros",
  "serde",
  "serde_json",
@@ -6135,9 +6137,9 @@ dependencies = [
 
 [[package]]
 name = "rxferrix-macros"
-version = "0.7.0"
+version = "0.9.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7eb744d61134168e623ccdcb3ed6cfcb69d755f55740d78e2b40965d772c5e82"
+checksum = "61b72363205da2cca0095fcdc933736dde1fb8b4c560318f09e27f85e06ce337"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
