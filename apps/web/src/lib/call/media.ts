@@ -86,6 +86,57 @@ export function screenConstraints(mode: 'Text' | 'Motion'): MediaTrackConstraint
     ? { width: { ideal: 3840 }, height: { ideal: 2160 }, frameRate: { ideal: 10, max: 15 } }
     : { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60, max: 60 } };
 }
+
+export function cameraConstraints(): MediaTrackConstraints {
+  return {
+    width: { ideal: 1920 },
+    height: { ideal: 1080 },
+    frameRate: { ideal: 30, max: 30 },
+  };
+}
+
+export function videoEncodings(kind: 'screen' | 'camera'): RTCRtpEncodingParameters[] {
+  return kind === 'screen'
+    ? [
+        { rid: 'q', scaleResolutionDownBy: 2, maxBitrate: 3_000_000 },
+        { rid: 'f', scaleResolutionDownBy: 1, maxBitrate: 12_000_000 },
+      ]
+    : [
+        { rid: 'q', scaleResolutionDownBy: 4, maxBitrate: 300_000 },
+        { rid: 'h', scaleResolutionDownBy: 2, maxBitrate: 1_200_000 },
+        { rid: 'f', scaleResolutionDownBy: 1, maxBitrate: 4_000_000 },
+      ];
+}
+
+export interface VideoPublication {
+  mid: string;
+  height: number;
+  encodings: RTCRtpEncodingParameters[];
+}
+
+/** Browsers omit RID dimensions; advertise them so the SFU doesn't guess a 3240p full layer. */
+export function configureVideoSdp(sdp: string, publications: VideoPublication[]): string {
+  return sdp
+    .split(/(?=m=)/)
+    .map((section) => {
+      if (!section.startsWith('m=video')) return section;
+      const mid = section.match(/^a=mid:(\S+)\r?$/m)?.[1];
+      const publication = publications.find((p) => p.mid === mid);
+      if (!publication || !publication.height) return section;
+      return section.replace(/^a=rid:(\S+) send([^\r\n]*)/gm, (line, rid, attributes: string) => {
+        const encoding = publication.encodings.find((e) => e.rid === rid);
+        if (!encoding) return line;
+        const params = attributes
+          .trim()
+          .split(';')
+          .filter((p) => p && !/^max-(height|br)=/.test(p.trim()));
+        params.push(`max-height=${Math.ceil(publication.height / (encoding.scaleResolutionDownBy ?? 1))}`);
+        if (encoding.maxBitrate) params.push(`max-br=${encoding.maxBitrate}`);
+        return `a=rid:${rid} send ${params.join(';')}`;
+      });
+    })
+    .join('');
+}
 export async function gatheredDescription(pc: RTCPeerConnection): Promise<string> {
   if (pc.iceGatheringState !== 'complete')
     await new Promise<void>((resolve, reject) => {
