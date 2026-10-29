@@ -4,6 +4,7 @@ import type { AudioProfile } from '../data/types';
 import type { ClientMsg, ServerMsg, DataMsg, TrackInfo, TrackKind, ParticipantInfo } from '../proto';
 import { configureSdp, configureVideoSdp, cameraConstraints, videoEncodings, qualityLabel, ReconnectPolicy, screenConstraints, gatheredDescription, iceRenewalDelay, type Admission } from './media';
 import { Microphone } from './microphone';
+import { BackgroundBlur, supportsBackgroundBlur } from './background-blur';
 import { errorMessage } from '../data/errors';
 
 type AudioRoute = { source: MediaStreamAudioSourceNode; gain: GainNode; pan: StereoPannerNode };
@@ -16,6 +17,10 @@ export class BrowserCallController extends CallState implements CallController {
   private microphone?: Microphone;
   private display?: MediaStream;
   private webcam?: MediaStream;
+  private cameraSource?: MediaStream;
+  private cameraBlur?: BackgroundBlur;
+  private cameraBlurStartup?: AbortController;
+  override backgroundBlurSupported = supportsBackgroundBlur();
   private context?: AudioContext;
   private output?: HTMLAudioElement;
   private destination?: MediaStreamAudioDestinationNode;
@@ -55,6 +60,10 @@ export class BrowserCallController extends CallState implements CallController {
     } catch {
       /* use defaults */
     }
+    try {
+      this.backgroundBlur =
+        this.backgroundBlurSupported && localStorage.getItem('pingo-background-blur') === 'true';
+    } catch {}
   }
 
   override async join(room: string, name: string) {
@@ -414,7 +423,7 @@ export class BrowserCallController extends CallState implements CallController {
       if (track.kind === 'video')
         track.onended = () => {
           if (kind === 'screen' && this.sharing) this.toggleShare();
-          if (kind === 'camera' && this.camera) this.toggleCamera();
+          if (kind === 'camera' && this.camera) this.stopFailedCamera('The camera disconnected.');
         };
     }
   }
@@ -474,9 +483,10 @@ export class BrowserCallController extends CallState implements CallController {
       });
   }
   override toggleCamera() {
-    if (!this.room || !this.pc) return;
+    if (!this.room || !this.pc || this.cameraBusy) return;
+    this.cameraBusy = true;
+    const generation = this.generation;
     if (!this.camera) {
-      const generation = this.generation;
       const capture = navigator.mediaDevices.getUserMedia({
         video: cameraConstraints(),
         audio: false,
@@ -493,28 +503,129 @@ export class BrowserCallController extends CallState implements CallController {
                 stream.getTracks().forEach((t) => t.stop());
                 return;
               }
-              this.webcam = stream;
-              this.localCamera = stream;
-              this.camera = true;
-              stream.getVideoTracks().forEach(t => (t.contentHint = 'motion'));
-              await this.addVideo(stream, 'camera');
-              await this.offer();
+              this.cameraSource = stream;
+              try {
+                const blur = this.backgroundBlur ? await this.openCameraBlur(stream) : undefined;
+                if (generation !== this.generation) {
+                  blur?.stop();
+                  stream.getTracks().forEach(track => track.stop());
+                  return;
+                }
+                this.cameraBlur = blur;
+                this.webcam = this.localCamera = blur?.stream ?? stream;
+                this.camera = true;
+                stream.getVideoTracks().forEach(track => {
+                  track.contentHint = 'motion';
+                  track.onended = () => { if (this.camera) this.stopFailedCamera('The camera disconnected.'); };
+                });
+                await this.addVideo(this.webcam, 'camera');
+                if (generation !== this.generation) return;
+                await this.offer();
+              } catch (error) {
+                if (generation === this.generation) {
+                  this.stopCameraCapture();
+                  await this.removeMedia(['camera']);
+                } else return;
+                throw error;
+              } finally {
+                if (generation === this.generation) this.cameraBusy = false;
+              }
             },
             () => stream.getTracks().forEach((t) => t.stop()),
           );
         })
         .catch((error) => {
-          if (generation === this.generation) this.error = errorMessage(error);
+          if (generation === this.generation) {
+            this.cameraBusy = false;
+            this.error = errorMessage(error);
+          }
         });
     } else
       this.control(async () => {
-        this.camera = false;
-        this.localCamera = null;
-        this.webcam?.getTracks().forEach((t) => t.stop());
-        this.webcam = undefined;
-        await this.removeMedia(['camera']);
-        await this.offer();
+        try {
+          this.stopCameraCapture();
+          await this.removeMedia(['camera']);
+          await this.offer();
+        } finally {
+          if (generation === this.generation) this.cameraBusy = false;
+        }
       });
+  }
+  private async openCameraBlur(stream: MediaStream) {
+    const startup = new AbortController();
+    this.cameraBlurStartup = startup;
+    try {
+      return await BackgroundBlur.open(stream, (error) => {
+        if (this.cameraSource === stream) this.stopFailedCamera(`Background blur stopped: ${errorMessage(error)}`);
+      }, startup.signal);
+    } finally {
+      if (this.cameraBlurStartup === startup) this.cameraBlurStartup = undefined;
+    }
+  }
+  private stopCameraCapture() {
+    this.camera = false;
+    this.localCamera = null;
+    this.cameraBlurStartup?.abort();
+    this.cameraBlurStartup = undefined;
+    this.cameraBlur?.stop();
+    this.cameraBlur = undefined;
+    this.cameraSource?.getTracks().forEach(track => track.stop());
+    this.cameraSource = this.webcam = undefined;
+  }
+  private stopFailedCamera(message: string) {
+    this.stopCameraCapture();
+    this.error = message;
+    this.control(async () => {
+      await this.removeMedia(['camera']);
+      await this.offer();
+    });
+  }
+  override setBackgroundBlur(enabled: boolean) {
+    if (!this.backgroundBlurSupported || this.cameraBusy || enabled === this.backgroundBlur) return;
+    if (!this.camera || !this.cameraSource) {
+      super.setBackgroundBlur(enabled);
+      return;
+    }
+    this.cameraBusy = true;
+    const generation = this.generation;
+    this.control(async () => {
+      let blur: BackgroundBlur | undefined;
+      const previous = this.cameraBlur;
+      const source = this.cameraSource;
+      const replaced: RTCRtpSender[] = [];
+      try {
+        if (!source) return;
+        blur = enabled ? await this.openCameraBlur(source) : undefined;
+        if (generation !== this.generation || !this.camera) { blur?.stop(); return; }
+        const stream = blur?.stream ?? source;
+        const track = stream.getVideoTracks()[0];
+        for (const [transceiver, kind] of this.published) {
+          if (kind !== 'camera') continue;
+          await transceiver.sender.replaceTrack(track);
+          replaced.push(transceiver.sender);
+        }
+        if (generation !== this.generation || !this.camera) { blur?.stop(); return; }
+        await this.offer();
+        if (generation !== this.generation || !this.camera) { blur?.stop(); return; }
+        this.cameraBlur = blur;
+        this.webcam = this.localCamera = stream;
+        previous?.stop();
+        super.setBackgroundBlur(enabled);
+      } catch (error) {
+        const oldTrack = (previous?.stream ?? source)?.getVideoTracks()[0];
+        blur?.stop();
+        if (generation !== this.generation) return;
+        if (this.camera && oldTrack)
+          try {
+            for (const sender of replaced) await sender.replaceTrack(oldTrack);
+          } catch {
+            this.stopFailedCamera('Could not restore the camera after changing background blur.');
+          }
+        throw error;
+      } finally {
+        if (generation === this.generation) this.cameraBusy = false;
+      }
+    });
   }
   override setShareMode(mode: 'Text' | 'Motion') {
     super.setShareMode(mode);
@@ -619,9 +730,15 @@ export class BrowserCallController extends CallState implements CallController {
     this.participants.clear();
     this.microphone?.stop();
     this.microphone = undefined;
+    if (this.cameraBusy) {
+      this.stopCameraCapture();
+      this.cameraBusy = false;
+    }
     if (!preserveCapture) {
-      for (const stream of [this.display, this.webcam]) stream?.getTracks().forEach((t) => t.stop());
-      this.display = this.webcam = undefined;
+      this.stopCameraCapture();
+      this.cameraBusy = false;
+      this.display?.getTracks().forEach((track) => track.stop());
+      this.display = undefined;
       this.localScreen = null;
       this.localCamera = null;
       this.sharing = false;
