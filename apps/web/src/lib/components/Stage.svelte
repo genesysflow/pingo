@@ -206,7 +206,9 @@
       style:--max-width={people.length <= 1 && !hasShare ? '880px' : '100%'}
     >
       {#each people as p (p.user)}
-        {@const camera = call.media.find((m) => m.user === p.user && m.kind === 'camera')}
+        {@const camera = p.user === call.userId && call.localCamera
+          ? { stream: call.localCamera, mid: '' }
+          : call.media.find((m) => m.user === p.user && m.kind === 'camera')}
         {@const level = p.muted ? 0 : (call.levels[p.user] ?? 0)}
         <div
           class="stage-tile"

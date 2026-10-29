@@ -481,6 +481,7 @@ export class BrowserCallController extends CallState implements CallController {
                 return;
               }
               this.webcam = stream;
+              this.localCamera = stream;
               this.camera = true;
               this.addVideo(stream, 'camera');
               await this.offer();
@@ -494,6 +495,7 @@ export class BrowserCallController extends CallState implements CallController {
     } else
       this.control(async () => {
         this.camera = false;
+        this.localCamera = null;
         this.webcam?.getTracks().forEach((t) => t.stop());
         this.webcam = undefined;
         await this.removeMedia(['camera']);
@@ -604,6 +606,7 @@ export class BrowserCallController extends CallState implements CallController {
       for (const stream of [this.display, this.webcam]) stream?.getTracks().forEach((t) => t.stop());
       this.display = this.webcam = undefined;
       this.localScreen = null;
+      this.localCamera = null;
       this.sharing = false;
       this.camera = false;
     }
