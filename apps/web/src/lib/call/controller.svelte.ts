@@ -25,6 +25,7 @@ export interface CallController {
   readonly error: string;
   readonly media: CallMedia[];
   readonly localScreen: MediaStream | null;
+  readonly localCamera: MediaStream | null;
   readonly camera: boolean;
   attachVideo?(mid: string, canvas: HTMLCanvasElement): () => void;
   toggleCamera(): void;
@@ -73,6 +74,7 @@ export class CallState implements CallController {
   error = $state('');
   media = $state<CallMedia[]>([]);
   localScreen = $state<MediaStream | null>(null);
+  localCamera = $state<MediaStream | null>(null);
   camera = $state(false);
   toggleCamera() {
     this.camera = !this.camera;

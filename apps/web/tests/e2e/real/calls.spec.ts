@@ -102,6 +102,17 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     await accept(bob, await invite(alice));
     await alice.getByRole('button', { name: 'Start a call', exact: false }).click();
     await expect(alice.locator('.stage-tile')).toHaveCount(1);
+    // Self-view must work even when there is nobody to forward camera media back.
+    const selfCamera = alice.locator('video[aria-label="CallAlice\'s camera"]');
+    await alice.getByRole('button', { name: 'Turn camera on', exact: true }).click();
+    await expect(selfCamera).toBeVisible();
+    await expect.poll(() => selfCamera.evaluate((node: HTMLVideoElement) => node.videoWidth)).toBeGreaterThan(0);
+    expect(await selfCamera.evaluate((node: HTMLVideoElement) => node.muted)).toBe(true);
+    const firstCapture = await selfCamera.evaluateHandle((node: HTMLVideoElement) => node.srcObject as MediaStream);
+    await alice.getByRole('button', { name: 'Turn camera off', exact: true }).click();
+    await expect(selfCamera).toHaveCount(0);
+    expect(await firstCapture.evaluate(stream => stream.getTracks().every(track => track.readyState === 'ended'))).toBe(true);
+    await firstCapture.dispose();
     await join(bob);
     await expect(alice.locator('.stage-tile')).toHaveCount(2);
     await expect.poll(() => inbound(alice, 'audio'), { timeout: 25_000 }).toBeGreaterThan(0);
@@ -146,10 +157,13 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     await alice.getByRole('button', { name: 'Send ❤️ in call' }).click();
     await expect(bob.locator('.floating-reaction')).toContainText('❤️');
     await alice.getByRole('button', { name: 'Turn camera on', exact: true }).click();
+    await expect(selfCamera).toBeVisible();
+    await expect.poll(() => selfCamera.evaluate((node: HTMLVideoElement) => node.videoWidth)).toBeGreaterThan(0);
     const camera = bob.locator('video[aria-label="CallAlice\'s camera"]');
     await expect(camera).toBeVisible();
     await expect.poll(() => camera.evaluate((node: HTMLVideoElement) => node.videoWidth)).toBeGreaterThan(0);
     await alice.getByRole('button', { name: 'Turn camera off', exact: true }).click();
+    await expect(selfCamera).toHaveCount(0);
     await expect(camera).toHaveCount(0);
     await expect(alice.getByRole('button', { name: '2 people in general call' })).toBeVisible();
     await alice.getByRole('button', { name: 'Share your screen', exact: true }).click();
@@ -181,7 +195,21 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
       .toBeGreaterThan(peersBefore);
     await expect.poll(() => inbound(bob, 'audio'), { timeout: 20_000 }).toBeGreaterThan(0);
     await expect(alice.locator('.stage-tile')).toHaveCount(2);
+    await alice.getByRole('button', { name: 'Turn camera on', exact: true }).click();
+    await expect(selfCamera).toBeVisible();
+    await expect(camera).toBeVisible();
+    const capture = await selfCamera.evaluateHandle((node: HTMLVideoElement) => node.srcObject as MediaStream);
+    const alicePeersBefore = await alice.evaluate(() => window.__peers.length);
+    await alice.evaluate(() => window.__rtcSockets.at(-1)!.close());
+    await expect.poll(() => alice.evaluate(() => window.__peers.length), { timeout: 20_000 }).toBeGreaterThan(alicePeersBefore);
+    await expect(selfCamera).toBeVisible();
+    expect(await selfCamera.evaluate((node: HTMLVideoElement, stream) => node.srcObject === stream, capture)).toBe(true);
+    await expect(camera).toBeVisible();
+    await expect.poll(() => camera.evaluate((node: HTMLVideoElement) => node.videoWidth)).toBeGreaterThan(0);
     await alice.getByRole('button', { name: 'Leave this call', exact: true }).click();
+    await expect(selfCamera).toHaveCount(0);
+    expect(await capture.evaluate(stream => stream.getTracks().every(track => track.readyState === 'ended'))).toBe(true);
+    await capture.dispose();
     await expect(bob.locator('.stage-tile')).toHaveCount(1);
     expect(errors).toEqual([]);
   } catch (error) {
