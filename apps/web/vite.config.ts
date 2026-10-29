@@ -2,8 +2,15 @@ import { defineConfig } from 'vitest/config';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 const backend = process.env.PINGO_BACKEND_URL ?? 'http://127.0.0.1:8090';
 export default defineConfig({
+  resolve: {
+    alias: {
+      'mediapipe-wasm': fileURLToPath(new URL('./node_modules/@mediapipe/tasks-vision/wasm', import.meta.url)),
+    },
+  },
+  optimizeDeps: { exclude: ['mediapipe-wasm'] },
   plugins: [
     svelte(),
     {

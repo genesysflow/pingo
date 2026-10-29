@@ -288,10 +288,21 @@
         ><Icon name={call.deafened ? 'deafen' : 'headphones'} size={18} /></button
       ><button
         class:control-on={call.camera}
+        disabled={call.cameraBusy}
         aria-label={call.camera ? 'Turn camera off' : 'Turn camera on'}
         title={call.camera ? 'Turn camera off' : 'Turn camera on'}
         onclick={() => call.toggleCamera()}><Icon name="video" size={18} /></button
-      ><button
+      >{#if call.backgroundBlurSupported}<button
+          class:control-on={call.backgroundBlur}
+          disabled={call.cameraBusy}
+          aria-pressed={call.backgroundBlur}
+          aria-label="Blur camera background"
+          title={call.cameraBusy
+            ? 'Updating camera…'
+            : call.backgroundBlur ? 'Turn background blur off' : 'Blur camera background'}
+          onclick={() => call.setBackgroundBlur(!call.backgroundBlur)}
+          ><Icon name="sparkles" size={18} /></button
+        >{/if}<button
         class:control-on={call.sharing}
         aria-label={call.sharing ? 'Stop sharing' : 'Share your screen'}
         title={call.sharing ? 'Stop sharing' : 'Share your screen'}

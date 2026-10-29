@@ -107,6 +107,21 @@ auth redirects. For production, omit `--dev`, configure real mail/OAuth and the 
 and expose HTTPS/WSS plus UDP as described in the backend README. Static serving is already implemented by the
 backend; no server API or signaling contract change was needed for it.
 
+## Camera background blur
+
+In a browser call, use **Blur camera background** (the sparkles button beside the camera).
+It can be selected before starting the camera or toggled during a call; the preference is saved locally.
+Person segmentation and compositing run on your device, before WebRTC encoding, so both your preview and
+other participants see the processed feed. Screen sharing is not affected. The model and WASM runtime are
+served by Pingo, with no third-party requests at runtime. They load only when blur is enabled.
+
+Blur currently caps camera output at 720p and 15 FPS to limit processing cost. Segmentation runs on the
+browser's main thread, so slower devices may experience reduced responsiveness. Person boundaries can be
+imperfect: this is a visual effect, not a guarantee that sensitive background details are hidden. Unsupported
+browsers do not show the option. A startup failure leaves an already-running camera unchanged (or keeps a
+new camera off); a processing failure stops the camera rather than falling back to an unblurred feed.
+Native desktop camera sending remains unavailable, so desktop background blur is not offered yet.
+
 ## Verification
 
 ```sh

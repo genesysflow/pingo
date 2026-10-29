@@ -27,6 +27,10 @@ export interface CallController {
   readonly localScreen: MediaStream | null;
   readonly localCamera: MediaStream | null;
   readonly camera: boolean;
+  readonly cameraBusy: boolean;
+  readonly backgroundBlur: boolean;
+  readonly backgroundBlurSupported: boolean;
+  setBackgroundBlur(enabled: boolean): void;
   attachVideo?(mid: string, canvas: HTMLCanvasElement): () => void;
   toggleCamera(): void;
   resumeAudio(): void;
@@ -76,6 +80,13 @@ export class CallState implements CallController {
   localScreen = $state<MediaStream | null>(null);
   localCamera = $state<MediaStream | null>(null);
   camera = $state(false);
+  cameraBusy = $state(false);
+  backgroundBlur = $state(false);
+  backgroundBlurSupported = true;
+  setBackgroundBlur(enabled: boolean) {
+    this.backgroundBlur = enabled;
+    try { localStorage.setItem('pingo-background-blur', String(enabled)); } catch {}
+  }
   toggleCamera() {
     this.camera = !this.camera;
   }

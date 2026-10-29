@@ -162,6 +162,15 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     const camera = bob.locator('video[aria-label="CallAlice\'s camera"]');
     await expect(camera).toBeVisible();
     await expect.poll(() => camera.evaluate((node: HTMLVideoElement) => node.videoWidth), { timeout: 25_000 }).toBeGreaterThanOrEqual(960);
+    const blur = alice.getByRole('button', { name: 'Blur camera background', exact: true });
+    await blur.click();
+    await expect(blur).toHaveAttribute('aria-pressed', 'true', { timeout: 25_000 });
+    await expect.poll(() => selfCamera.evaluate((node: HTMLVideoElement) => node.videoHeight)).toBeLessThanOrEqual(720);
+    const blurredBytes = await inbound(bob, 'video');
+    await expect.poll(() => inbound(bob, 'video')).toBeGreaterThan(blurredBytes);
+    await blur.click();
+    await expect(blur).toHaveAttribute('aria-pressed', 'false');
+    await expect.poll(() => selfCamera.evaluate((node: HTMLVideoElement) => node.videoWidth)).toBeGreaterThanOrEqual(960);
     await alice.getByRole('button', { name: 'Turn camera off', exact: true }).click();
     await expect(selfCamera).toHaveCount(0);
     await expect(camera).toHaveCount(0);

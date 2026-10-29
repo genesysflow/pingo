@@ -192,6 +192,7 @@ export class TauriCallController extends CallState {
   }
   override toggleShare() { this.error = 'Native screen sending is not available in this build.'; }
   override toggleCamera() { this.error = 'Native camera sending is not available in this build.'; }
+  override backgroundBlurSupported = false;
   override destroy() {
     this.disposed = true; this.unlisten.splice(0).forEach(stop => stop()); super.destroy();
   }
