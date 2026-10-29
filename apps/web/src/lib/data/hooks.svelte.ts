@@ -54,6 +54,9 @@ export function useQuery<Q extends FunctionReference<'query'>>(
     get isLoading() {
       return false;
     },
+    get isStale() {
+      return false;
+    },
   };
 }
 export function useMutation<M extends FunctionReference<'mutation'>>(

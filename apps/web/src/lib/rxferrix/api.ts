@@ -6,6 +6,7 @@ import type { AccessStatus, AudioProfile, DmSummary, Id, InboxItem, JoinResult, 
 /** References to every public function, for `useQuery(api.module.fn, args)` and friends. */
 export const api = {
   access: {
+    /** No sign-in required: the sign-up page uses it to explain the policy. */
     status: makeFunctionReference<"query", Record<string, never>, AccessStatus>("query", "access:status"),
   },
   dms: {
@@ -74,7 +75,9 @@ export const api = {
 /** Dev-only functions (`#[query(dev_only)]`, ...): the server refuses them unless it runs with `--dev`. */
 export const devApi = {
   dev: {
+    /** The newest 6-digit code emailed to `email`. */
     last_code: makeFunctionReference<"action", { email: string, }, string | null>("action", "dev:last_code"),
+    /** Idempotent sample data for a fresh development server; never callable in production. */
     seed: makeFunctionReference<"mutation", Record<string, never>, Id<"spaces">>("mutation", "dev:seed"),
   },
 } as const;
