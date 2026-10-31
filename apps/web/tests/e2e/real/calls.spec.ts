@@ -34,6 +34,19 @@ async function inbound(page: Page, kind: 'audio' | 'video') {
     return bytes;
   }, kind);
 }
+// Bytes alone pass even when Chromium never plays the remote track out; decoded samples prove it is audible.
+async function decodedAudio(page: Page) {
+  return page.evaluate(async () => {
+    let samples = 0;
+    for (const pc of window.__peers) {
+      if (pc.connectionState === 'closed') continue;
+      (await pc.getStats()).forEach((r) => {
+        if (r.type === 'inbound-rtp' && r.kind === 'audio') samples += r.totalSamplesReceived ?? 0;
+      });
+    }
+    return samples;
+  });
+}
 async function join(page: Page) {
   await page.getByRole('button', { name: 'Start a call', exact: false }).click();
   await expect(page.locator('.stage-tile')).toHaveCount(2, { timeout: 20_000 });
@@ -117,6 +130,8 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     await expect(alice.locator('.stage-tile')).toHaveCount(2);
     await expect.poll(() => inbound(alice, 'audio'), { timeout: 25_000 }).toBeGreaterThan(0);
     await expect.poll(() => inbound(bob, 'audio'), { timeout: 25_000 }).toBeGreaterThan(0);
+    await expect.poll(() => decodedAudio(alice)).toBeGreaterThan(0);
+    await expect.poll(() => decodedAudio(bob)).toBeGreaterThan(0);
     if (process.env.PINGO_E2E_RELAY_ONLY === '1') {
       for (const page of [alice, bob]) {
         const relayed = await page.evaluate(async () => {

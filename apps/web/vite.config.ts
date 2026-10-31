@@ -10,7 +10,12 @@ export default defineConfig({
       'mediapipe-wasm': fileURLToPath(new URL('./node_modules/@mediapipe/tasks-vision/wasm', import.meta.url)),
     },
   },
-  optimizeDeps: { exclude: ['mediapipe-wasm'] },
+  optimizeDeps: {
+    exclude: ['mediapipe-wasm'],
+    // Only the blur worker imports MediaPipe, which the startup scan misses. Discovering it on first use
+    // makes the dev server reload the page and drop the call.
+    include: ['@mediapipe/tasks-vision'],
+  },
   plugins: [
     svelte(),
     {

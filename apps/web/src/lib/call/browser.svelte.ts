@@ -7,7 +7,12 @@ import { Microphone } from './microphone';
 import { BackgroundBlur, supportsBackgroundBlur } from './background-blur';
 import { errorMessage } from '../data/errors';
 
-type AudioRoute = { source: MediaStreamAudioSourceNode; gain: GainNode; pan: StereoPannerNode };
+type AudioRoute = {
+  source: MediaStreamAudioSourceNode;
+  gain: GainNode;
+  pan: StereoPannerNode;
+  sink: HTMLAudioElement;
+};
 
 /** RxFerrix supplies admission; only the SFU owns durable participant state. */
 export class BrowserCallController extends CallState implements CallController {
@@ -313,7 +318,12 @@ export class BrowserCallController extends CallState implements CallController {
       const gain = this.context.createGain(),
         pan = this.context.createStereoPanner();
       source.connect(gain).connect(pan).connect(this.destination);
-      this.sources.set(mid, { source, gain, pan });
+      // Chromium decodes a remote track only while a media element plays it; Web Audio alone gets silence.
+      const sink = new Audio();
+      sink.muted = true;
+      sink.srcObject = stream;
+      void sink.play().catch(() => {});
+      this.sources.set(mid, { source, gain, pan, sink });
       this.mix(user);
     }
   }
@@ -322,6 +332,10 @@ export class BrowserCallController extends CallState implements CallController {
     route?.source.disconnect();
     route?.gain.disconnect();
     route?.pan.disconnect();
+    if (route) {
+      route.sink.pause();
+      route.sink.srcObject = null;
+    }
     this.sources.delete(mid);
     this.media = this.media.filter((m) => m.mid !== mid);
   }
