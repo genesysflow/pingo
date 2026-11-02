@@ -3425,6 +3425,39 @@ button.dock-chip:hover {
   font-weight: 600;
   color: var(--accent-text);
 }
+.auth-server {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 28px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.auth-server span {
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.auth-server code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 12.5px/1.4 var(--font-mono);
+  color: var(--text);
+}
+.auth-server button {
+  font-weight: 600;
+  color: var(--accent-text);
+}
+.auth-server button:hover {
+  text-decoration: underline;
+}
 .demo-note {
   margin: 18px 0 0;
   padding: 10px 12px;

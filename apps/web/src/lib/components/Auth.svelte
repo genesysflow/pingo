@@ -4,6 +4,8 @@
   import type { AuthProviders } from '@rxferrix/client';
   import { api, useAuth, useQuery, useMutation, isDemo } from '../data';
   import Icon from './Icon.svelte';
+  import AuthStory from './AuthStory.svelte';
+  import { nativeDesktop, serverOrigin, chooseServer } from '../desktop/bridge';
   let { inviteCode, enter }: { inviteCode?: string; enter: (space?: string) => void } = $props();
   const auth = useAuth(),
     preview = useQuery(api.invites.preview, () => (inviteCode ? { code: inviteCode } : 'skip')),
@@ -100,21 +102,7 @@
 </script>
 
 <div class="auth-page">
-  <div class="auth-story">
-    <a class="auth-brand" href="/"><img src="/pingo.svg" alt="" />Pingo</a>
-    <div class="auth-pitch">
-      <h1>Chat, voice and screen sharing for small teams.</h1>
-      <ul class="auth-specs">
-        <li><span>Voice</span>Opus at 48 kHz, stereo Studio mode</li>
-        <li><span>Noise</span>DeepFilterNet3 on every microphone</li>
-        <li><span>Screen</span>Sharp text up to 4K, or 1080p60 motion</li>
-        <li><span>Server</span>One binary you run yourself</li>
-      </ul>
-    </div>
-    <div class="auth-meter" aria-hidden="true">
-      {#each Array(28) as _, i}<i style:--h={`${18 + Math.abs(Math.sin(i * 1.7) * 62)}%`} style:--d={`${(i % 7) * 0.13}s`}></i>{/each}
-    </div>
-  </div>
+  <AuthStory />
   <main class="auth-form-side">
     <div class="auth-form">
       {#if inviteCode && preview.data === null}<h2>This invite has expired</h2>
@@ -252,6 +240,11 @@
             Local demo: use any email and a password of 6+ characters. OAuth buttons simulate sign-in; no email
             is sent.
           </p>{/if}{/if}
+      {#if nativeDesktop}<p class="auth-server">
+          <span>Server</span><code title={serverOrigin()}>{new URL(serverOrigin()).host}</code><button
+            onclick={chooseServer}>Change</button
+          >
+        </p>{/if}
     </div>
   </main>
 </div>

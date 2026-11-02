@@ -95,7 +95,7 @@ try {
     browserName: 'wry', 'webkitgtk:browserOptions': { binary: resolve(process.env.PINGO_DESKTOP_BINARY ?? join(root, 'target/debug/pingo')) },
   } } });
   session = created.sessionId;
-  await fill('Server URL', origin); await click('Continue');
+  await fill('Server address', origin); await click('Continue');
   await click('Create an account');
   await fill('Your name', 'Desktop Smoke');
   await fill('Email address', 'desktop@pingo.test'); await fill('Password', 'correct-horse-pingo');

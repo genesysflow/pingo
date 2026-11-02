@@ -1,33 +1,64 @@
 <script lang="ts">
-  import { loadDesktopPreferences, saveDesktopPreferences } from './bridge';
-  let { ready }: { ready: () => void } = $props();
-  let server = $state('http://127.0.0.1:8090'), error = $state(''), busy = $state(false);
+  import { untrack } from 'svelte';
+  import { checkServer, loadDesktopPreferences, normalizeServer, saveDesktopPreferences } from './bridge';
+  import AuthStory from '../components/AuthStory.svelte';
+  import { DEFAULT_ACCENT, inkFor, storedTheme } from '../theme';
+  let { current, ready }: { current: string | null; ready: () => void } = $props();
+  // Development builds point at the local dev server so a fresh checkout works without typing.
+  let server = $state(untrack(() => current) ?? (import.meta.env.DEV ? 'http://127.0.0.1:8090' : '')),
+    error = $state(''),
+    busy = $state(false);
   async function connect(event: SubmitEvent) {
     event.preventDefault();
     busy = true;
     error = '';
     try {
-      const current = await loadDesktopPreferences();
-      await saveDesktopPreferences({ ...current, serverUrl: server });
+      const origin = normalizeServer(server);
+      await checkServer(origin);
+      const preferences = await loadDesktopPreferences();
+      await saveDesktopPreferences({ ...preferences, serverUrl: origin });
       ready();
-    } catch (e) { error = String(e); }
-    finally { busy = false; }
+    } catch (e) {
+      error = e instanceof Error ? e.message : String(e);
+    } finally {
+      busy = false;
+    }
   }
 </script>
 
-<main class="setup">
-  <form onsubmit={connect}>
-    <img src="/pingo.svg" width="36" height="36" alt="Pingo" />
-    <h1>Connect to a server</h1>
-    <p>Enter your Pingo server address. We’ll remember it on this device.</p>
-    <label class="field">Server URL<input type="url" bind:value={server} required placeholder="https://pingo.example.com" /></label>
-    {#if error}<p role="alert" class="error">{error}</p>{/if}
-    <button class="button primary" disabled={busy}>{busy ? 'Connecting…' : 'Continue'}</button>
-  </form>
-</main>
-
-<style>
-  .setup { min-height: 100vh; display: grid; place-items: center; padding: 2rem; }
-  form { width: min(100%, 440px); }
-  p { margin: 1rem 0 2rem; }
-</style>
+<div
+  class="app-root"
+  data-theme={storedTheme()}
+  style:--accent={DEFAULT_ACCENT}
+  style:--on-accent={inkFor(DEFAULT_ACCENT)}
+>
+  <div class="auth-page">
+    <AuthStory />
+    <main class="auth-form-side">
+      <form class="auth-form" onsubmit={connect}>
+        <h2>{current ? 'Change server' : 'Connect to a server'}</h2>
+        <p class="settings-description">
+          Enter the address of the Pingo server you want to use. This device will remember it.
+        </p>
+        <label class="field"
+          >Server address<input
+            bind:value={server}
+            required
+            inputmode="url"
+            autocomplete="url"
+            autocapitalize="off"
+            spellcheck="false"
+            placeholder="pingo.example.com"
+          /></label
+        >
+        {#if error}<p role="alert" class="error">{error}</p>{/if}
+        <button class="button primary full" disabled={busy || !server.trim()}
+          >{busy ? 'Connecting…' : 'Continue'}</button
+        >
+        {#if current}<button type="button" class="magic-link" onclick={ready}
+            >Keep using {new URL(current).host}</button
+          >{/if}
+      </form>
+    </main>
+  </div>
+</div>

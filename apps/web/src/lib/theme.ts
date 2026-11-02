@@ -15,3 +15,8 @@ export function inkFor(hex: string): string {
   });
   return 0.2126 * r + 0.7152 * g + 0.0722 * b > 0.2 ? '#16130f' : '#ffffff';
 }
+
+/** The saved theme, or the system preference before one is chosen. */
+export function storedTheme(): string {
+  return localStorage.getItem('pingo-theme') ?? (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+}
