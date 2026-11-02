@@ -89,6 +89,21 @@ Member         { user, name, color, avatarUrl?, status, roles: Id[] }
 Error codes: `not_found`, `forbidden`, `invalid_name`, `name_taken`, `invalid_invite`, `rate_limited`, `too_long`,
 `invite_required`, `email_not_allowed`, `email_not_verified`, `misconfigured` (an invalid registration setting).
 
+## Version and compatibility
+
+`GET /.well-known/pingo` (plain HTTP route, no auth, outside `/api`) returns `pingo_proto::VersionInfo`:
+
+```ts
+VersionInfo { version: string /* release, display only */, protocol: number, minProtocol: number }
+```
+
+The desktop app ships its own UI and media engine and updates separately from servers, so it reads this before
+using a server. App and server work together when each one's `protocol` is at least the other's `minProtocol`
+(`pingo_proto::version::compatibility`). Servers from before this route answer it with the web app's HTML;
+clients treat that as protocol 1. Bump `PROTOCOL` in `crates/pingo-proto/src/version.rs` when a change to this
+contract or to signaling can't be handled by the other side, and raise `MIN_PROTOCOL` when dropping support for
+an older peer.
+
 ## Registration policy
 
 Read from RxFerrix Environment (dashboard or `pingo-server env set`), falling back to the process environment:
