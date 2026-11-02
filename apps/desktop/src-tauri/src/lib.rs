@@ -1,6 +1,8 @@
 pub mod calls;
 mod config;
 mod probe;
+mod server;
+mod updates;
 mod video;
 
 use config::{DesktopState, Preferences};
@@ -128,9 +130,11 @@ pub fn run() {
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![desktop_config, desktop_save_config, desktop_invites, desktop_notify, call_join, call_leave, call_configure, call_data, call_ptt, call_devices, call_loopback, video_subscribe, video_unsubscribe, video_ack, call_video_quality, probe::desktop_probe, probe::desktop_probe_report, probe::video_spike])
+        .invoke_handler(tauri::generate_handler![desktop_config, desktop_save_config, desktop_invites, desktop_notify, call_join, call_leave, call_configure, call_data, call_ptt, call_devices, call_loopback, video_subscribe, video_unsubscribe, video_ack, call_video_quality, probe::desktop_probe, probe::desktop_probe_report, probe::video_spike, server::desktop_server_check, updates::desktop_app_info, updates::desktop_update_status, updates::desktop_update_check, updates::desktop_update_install])
         .setup(|app| {
             app.manage(calls::CallManager::default());
+            app.manage(updates::Updates::default());
+            updates::spawn_checks(app.handle().clone());
             // Parsing the noise suppression model takes a few hundred ms; do it before the first call.
             std::thread::spawn(pingo_media::audio::denoise::preload);
             // Pure Wayland sessions may have no X11 hotkey service. Keep the rest of Pingo usable.

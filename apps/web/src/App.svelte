@@ -29,6 +29,7 @@
   import Modal from './lib/components/Modal.svelte';
   import { nativeDesktop } from './lib/desktop/bridge';
   import DesktopEvents from './lib/desktop/DesktopEvents.svelte';
+  import UpdateBanner from './lib/desktop/UpdateBanner.svelte';
   import { DEFAULT_ACCENT, inkFor as onAccent, storedTheme } from './lib/theme';
   initializeData();
   const auth = useAuth(),
@@ -796,6 +797,7 @@
         }}>Save status</button
       ></Modal
     >{/if}
+  {#if nativeDesktop}<UpdateBanner inCall={!!call.room} {notice} />{/if}
   {#if toast}<div class="toast" role="status">
       {toast}<button class="icon-button" aria-label="Dismiss notification" onclick={() => (toast = '')}
         ><Icon name="close" size={14} /></button

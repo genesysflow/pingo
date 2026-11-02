@@ -250,6 +250,15 @@ impl CallManager {
             .try_send(Command::Data(data))
             .map_err(|_| CallError::Busy)
     }
+    /// A real call, not the sound check loopback.
+    pub fn in_call(&self) -> bool {
+        self.state
+            .lock()
+            .unwrap()
+            .active
+            .as_ref()
+            .is_some_and(|a| !a.loopback)
+    }
     pub fn is_active(&self, id: &str) -> bool {
         self.state
             .lock()

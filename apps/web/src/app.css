@@ -3834,3 +3834,48 @@ button.dock-chip:hover {
 .access-account .text-button {
   padding: 0;
 }
+
+/* ───────────────────────── Desktop updates ───────────────────────── */
+.update-card {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 140;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(420px, calc(100vw - 28px));
+  padding: 10px 10px 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--accent-text);
+  box-shadow: var(--shadow);
+  animation: pop-in 0.16s ease-out;
+}
+.update-card div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+.update-card span {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.update-card .icon-button {
+  width: 26px;
+  height: 26px;
+}
+.update-notes {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--muted);
+  font-size: 13px;
+  white-space: pre-line;
+}
+.auth-form .update-action {
+  margin-top: 10px;
+}

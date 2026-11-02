@@ -1,5 +1,6 @@
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import type { VersionInfo } from '../proto';
 
 export const nativeDesktop = isTauri();
 export interface DesktopPreferences {
@@ -35,15 +36,22 @@ export function normalizeServer(input: string) {
   const local = /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|\[::1\])/i.test(value);
   return `${local ? 'http' : 'https'}://${value}`;
 }
-/** Confirms a Pingo (RxFerrix) server answers before we commit to it. */
-export async function checkServer(origin: string) {
-  let response: Response;
-  try {
-    response = await fetch(`${origin}/api/auth/providers`, { signal: AbortSignal.timeout(8000) });
-  } catch {
-    throw new Error(`Couldn’t reach ${origin}. Check the address and that the server is running.`);
-  }
-  if (!response.ok) throw new Error(`${origin} answered, but it doesn’t look like a Pingo server.`);
+export interface ServerCheck {
+  origin: string;
+  server: VersionInfo;
+  app: VersionInfo;
+  compatibility: 'compatible' | 'clientTooOld' | 'serverTooOld';
+}
+/** Confirms a Pingo server answers and speaks a protocol this app supports. Rejects with a readable message. */
+export const checkServer = (server: string) => invoke<ServerCheck>('desktop_server_check', { server });
+/** Why this app can't use the server, or null when it can. */
+export function incompatibility(check: ServerCheck) {
+  const host = new URL(check.origin).host;
+  if (check.compatibility === 'clientTooOld')
+    return `${host} runs a newer Pingo (${check.server.version}) that needs an updated app. Update Pingo, then try again.`;
+  if (check.compatibility === 'serverTooOld')
+    return `${host} runs an older Pingo (${check.server.version}) that this app no longer supports. Ask its admin to update it, or use an older app.`;
+  return null;
 }
 export async function watchInvites() {
   const drain = async () => {
