@@ -108,7 +108,7 @@ The setup script puts settings in `.env`. With the single-file Compose example, 
 | `PINGO_DOMAIN` | with `https` | The domain Caddy gets a certificate for. |
 | `PINGO_UDP_PORT` | | The media port, default `40000`. Open it for UDP in your firewall. |
 | `PINGO_HTTP_PORT` | | Host port for HTTP, default `8090`. |
-| `RXFERRIX_SMTP_URL`, `RXFERRIX_SMTP_FROM` | | Email for magic links and confirmation codes, e.g. `smtps://user:pass@smtp.example.com:465`. |
+| `RXFERRIX_SMTP_URL`, `RXFERRIX_SMTP_FROM` | | Email for magic links and confirmation codes, e.g. `smtps://user:pass@smtp.example.com:465`. On port 587, `smtp://` uses STARTTLS and refuses to send without it; add `?tls=opportunistic` to allow plain text. To keep the URL out of the environment, put it in a file and set `RXFERRIX_SMTP_URL_FILE` to the file's path. |
 | `RXFERRIX_TRUST_PROXY` | | `true` behind a reverse proxy, so sign-in rate limits see real client IPs. |
 | `RXFERRIX_AUTH_GITHUB_CLIENT_ID` / `_SECRET` | | Sign in with GitHub. `GOOGLE` and `DISCORD` work the same way. The callback URL is `PINGO_URL/api/auth/oauth/<provider>/callback`. |
 

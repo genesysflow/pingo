@@ -12,6 +12,7 @@ mod dms;
 mod files;
 mod inbox;
 mod invites;
+mod mail;
 mod media;
 mod messages;
 mod model;
@@ -36,6 +37,10 @@ fn mount_media(app: RxFerrix) -> rxferrix::Result<RxFerrix> {
 }
 
 fn main() -> rxferrix::Result<()> {
+    if let Err(message) = mail::prepare_env() {
+        eprintln!("error: {message}");
+        std::process::exit(2);
+    }
     // RxFerrix has no codegen builder option; use the UI target when --dev omits an explicit override.
     let args: Vec<String> = std::env::args().collect();
     if args.iter().any(|a| a == "--dev")
