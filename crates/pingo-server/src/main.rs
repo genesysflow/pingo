@@ -15,6 +15,7 @@ mod invites;
 mod mail;
 mod media;
 mod messages;
+mod meta;
 mod model;
 mod presence;
 mod profiles;
@@ -32,7 +33,7 @@ use rxferrix::auth::{AuthConfig, Discord, GitHub, Google};
 fn mount_media(app: RxFerrix) -> rxferrix::Result<RxFerrix> {
     let media = media::Media::from_env()?;
     Ok(app
-        .app_routes(media.clone().router())
+        .app_routes(media.clone().router().merge(meta::router()))
         .on_start(move |app| async move { media.start(app).await }))
 }
 

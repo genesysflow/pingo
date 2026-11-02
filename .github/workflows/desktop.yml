@@ -1,0 +1,108 @@
+name: Release desktop app
+
+# A v* tag builds signed Linux bundles and a draft GitHub release with the updater manifest. Installed apps
+# read releases/latest/download/latest.json, so nothing reaches them until the draft is published.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  linux:
+    # The oldest supported runner, so the bundles run on older glibc.
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check versions
+        id: version
+        shell: bash
+        run: |
+          cargo=$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml)
+          tauri=$(jq -r .version apps/desktop/src-tauri/tauri.conf.json)
+          if [ "$cargo" != "$tauri" ]; then
+            echo "::error::Cargo.toml has $cargo but tauri.conf.json has $tauri"; exit 1
+          fi
+          if [[ "$GITHUB_REF" == refs/tags/v* ]] && [ "${GITHUB_REF_NAME#v}" != "$cargo" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME doesn't match version $cargo"; exit 1
+          fi
+          echo "version=$cargo" >> "$GITHUB_OUTPUT"
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config file patchelf clang cmake nasm python3-pip \
+            libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libxdo-dev libssl-dev \
+            libopus-dev libasound2-dev
+          # webrtc-audio-processing needs a newer meson than Ubuntu 22.04 ships.
+          pip3 install --user meson ninja
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: desktop
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.4.4"
+
+      - name: Install JavaScript dependencies
+        run: |
+          (cd apps/web && bun install --frozen-lockfile)
+          (cd apps/desktop && bun install --frozen-lockfile)
+
+      - name: Build signed bundles
+        working-directory: apps/desktop
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if [ -z "$TAURI_SIGNING_PRIVATE_KEY" ]; then
+            echo "::error::Add the TAURI_SIGNING_PRIVATE_KEY secret (see apps/desktop/README.md)"; exit 1
+          fi
+          bun run tauri build --bundles appimage,deb --config '{"bundle":{"createUpdaterArtifacts":true}}'
+
+      - name: Write updater manifest
+        id: bundles
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          shopt -s nullglob
+          bundles=(target/release/bundle/appimage/*.AppImage target/release/bundle/deb/*.deb)
+          tag="v$VERSION"
+          echo "Release notes: https://github.com/$GITHUB_REPOSITORY/releases/tag/$tag" > notes.md
+          bun apps/desktop/scripts/update-manifest.ts --version "$VERSION" \
+            --base-url "https://github.com/$GITHUB_REPOSITORY/releases/download/$tag" \
+            --notes-file notes.md --out latest.json "${bundles[@]}"
+          {
+            echo 'files<<EOF'
+            for f in "${bundles[@]}"; do echo "$f"; echo "$f.sig"; done
+            echo latest.json
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pingo-desktop-linux-${{ steps.version.outputs.version }}
+          path: ${{ steps.bundles.outputs.files }}
+
+      - name: Create draft release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FILES: ${{ steps.bundles.outputs.files }}
+        run: |
+          mapfile -t files <<< "$FILES"
+          gh release create "$GITHUB_REF_NAME" --draft --verify-tag --generate-notes \
+            --title "Pingo $GITHUB_REF_NAME" "${files[@]}"

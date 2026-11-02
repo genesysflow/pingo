@@ -29,7 +29,8 @@
   import Modal from './lib/components/Modal.svelte';
   import { nativeDesktop } from './lib/desktop/bridge';
   import DesktopEvents from './lib/desktop/DesktopEvents.svelte';
-  import { DEFAULT_ACCENT, inkFor as onAccent } from './lib/theme';
+  import UpdateBanner from './lib/desktop/UpdateBanner.svelte';
+  import { DEFAULT_ACCENT, inkFor as onAccent, storedTheme } from './lib/theme';
   initializeData();
   const auth = useAuth(),
     call = createCall();
@@ -39,10 +40,7 @@
   let view = $state<'chat' | 'inbox' | 'settings'>(
     location.pathname === '/catch-up' ? 'inbox' : location.pathname === '/settings' ? 'settings' : 'chat',
   );
-  let theme = $state(
-      localStorage.getItem('pingo-theme') ??
-        (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
-    ),
+  let theme = $state(storedTheme()),
     density = $state(localStorage.getItem('pingo-density') ?? 'comfortable');
   let palette = $state(false),
     shortcutSheet = $state(false),
@@ -799,6 +797,7 @@
         }}>Save status</button
       ></Modal
     >{/if}
+  {#if nativeDesktop}<UpdateBanner inCall={!!call.room} {notice} />{/if}
   {#if toast}<div class="toast" role="status">
       {toast}<button class="icon-button" aria-label="Dismiss notification" onclick={() => (toast = '')}
         ><Icon name="close" size={14} /></button

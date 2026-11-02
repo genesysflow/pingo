@@ -3425,6 +3425,39 @@ button.dock-chip:hover {
   font-weight: 600;
   color: var(--accent-text);
 }
+.auth-server {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 28px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.auth-server span {
+  font: 500 11px/1 var(--font-mono);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+.auth-server code {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 12.5px/1.4 var(--font-mono);
+  color: var(--text);
+}
+.auth-server button {
+  font-weight: 600;
+  color: var(--accent-text);
+}
+.auth-server button:hover {
+  text-decoration: underline;
+}
 .demo-note {
   margin: 18px 0 0;
   padding: 10px 12px;
@@ -3800,4 +3833,49 @@ button.dock-chip:hover {
 }
 .access-account .text-button {
   padding: 0;
+}
+
+/* ───────────────────────── Desktop updates ───────────────────────── */
+.update-card {
+  position: fixed;
+  top: 14px;
+  right: 14px;
+  z-index: 140;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(420px, calc(100vw - 28px));
+  padding: 10px 10px 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--accent-text);
+  box-shadow: var(--shadow);
+  animation: pop-in 0.16s ease-out;
+}
+.update-card div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+.update-card span {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+.update-card .icon-button {
+  width: 26px;
+  height: 26px;
+}
+.update-notes {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-left: 2px solid var(--border-strong);
+  color: var(--muted);
+  font-size: 13px;
+  white-space: pre-line;
+}
+.auth-form .update-action {
+  margin-top: 10px;
 }

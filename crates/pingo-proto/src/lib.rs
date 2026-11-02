@@ -6,6 +6,8 @@
 pub mod ice;
 pub mod signal;
 pub mod token;
+pub mod version;
 
 pub use signal::{ClientMsg, DataMsg, ParticipantInfo, ServerMsg, TrackInfo, TrackKind};
 pub use token::{MediaClaims, TokenError};
+pub use version::{Compatibility, VersionInfo};

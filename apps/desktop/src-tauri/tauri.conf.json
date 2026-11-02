@@ -28,6 +28,9 @@
   },
   "plugins": {
     "deep-link": { "desktop": { "schemes": ["pingo"] } },
-    "updater": { "endpoints": [], "pubkey": "" }
+    "updater": {
+      "endpoints": ["https://github.com/genesysflow/pingo/releases/latest/download/latest.json"],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERCN0NFRDIxMjBDODEyNjYKUldSbUVzZ2dJZTE4MjJCcGRHUkpqVWJNaDJqbmNISW8vMlJSWW1ZMWdpb1lFODA0YjFJcmcvR2cK"
+    }
   }
 }

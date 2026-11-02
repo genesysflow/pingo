@@ -44,3 +44,9 @@ export type DataMsg =
   | { type: 'raiseHand'; participantId: string; raised: boolean }
   | { type: 'pointer'; participantId: string; shareMid: string; pos: [number, number] | null }
   | { type: 'stroke'; participantId: string; shareMid: string; points: [number, number][]; color: string };
+/** `GET /.well-known/pingo`; see `pingo_proto::version`. */
+export interface VersionInfo {
+  version: string;
+  protocol: number;
+  minProtocol: number;
+}

@@ -124,7 +124,7 @@
   </div>
   <div class="settings-layout">
     <nav class="settings-nav" aria-label="Settings sections">
-      {#each [{ title: 'Profile', icon: 'users' as const }, { title: 'Audio & video', icon: 'headphones' as const }, { title: 'Appearance', icon: 'sun' as const }, { title: 'Notifications', icon: 'bell' as const }, { title: 'Keyboard shortcuts', icon: 'keyboard' as const }, { title: 'Space', icon: 'compass' as const }] as t}<button
+      {#each [{ title: 'Profile', icon: 'users' as const }, { title: 'Audio & video', icon: 'headphones' as const }, { title: 'Appearance', icon: 'sun' as const }, { title: 'Notifications', icon: 'bell' as const }, { title: 'Keyboard shortcuts', icon: 'keyboard' as const }, ...(nativeDesktop ? [{ title: 'Desktop app', icon: 'download' as const }] : []), { title: 'Space', icon: 'compass' as const }] as t}<button
           class:active={tab === t.title}
           onclick={() => (tab = t.title)}><Icon name={t.icon} size={17} />{t.title}</button
         >{/each}<button class="sign-out" onclick={() => auth.signOut()}
@@ -133,7 +133,7 @@
     </nav>
     <div class="settings-content">
       <h2>{tab}</h2>
-      {#if nativeDesktop && tab === 'Keyboard shortcuts'}<DesktopSettings />{/if}
+      {#if tab === 'Desktop app'}<DesktopSettings inCall={!!call.room} />{/if}
       {#if tab === 'Appearance'}<h3>Theme</h3>
         <div class="theme-options">
           {#each [{ id: 'light', name: 'Light', icon: 'sun' as const }, { id: 'dark', name: 'Dark', icon: 'moon' as const }, { id: 'contrast', name: 'High contrast', icon: 'contrast' as const }] as t}<button
