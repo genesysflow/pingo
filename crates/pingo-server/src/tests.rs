@@ -1936,6 +1936,59 @@ async fn magic_link_and_code_sign_up_apply_current_policy_before_creating_accoun
 }
 
 #[tokio::test]
+async fn magic_links_only_go_to_addresses_that_may_sign_in_or_sign_up() {
+    let mailer = MemoryMailer::new();
+    let mut options = app_options(true);
+    options.auth = options.auth.mailer(mailer.clone()).rate_limits(None);
+    let app = TestApp::with_options(options).await.unwrap();
+    let owner = user(&app, "Owner").await;
+    let space = app
+        .as_user(owner)
+        .mutation::<spaces::create>(("Home".into(), None))
+        .await
+        .unwrap();
+    let invite = app
+        .as_user(owner)
+        .mutation::<invites::create>((space, None, None))
+        .await
+        .unwrap();
+    let invited = format!("http://localhost:5173/invite/{invite}");
+    let request = |email: &'static str, redirect: Option<String>| {
+        let app = &app;
+        async move {
+            app.app()
+                .auth()
+                .request_magic_link(app.app(), email, redirect.as_deref())
+                .await
+                .unwrap()
+        }
+    };
+
+    set_env(&app, crate::access::REGISTRATION, Some("invite")).await;
+    request("stranger@acme.org", None).await;
+    request(
+        "stranger@acme.org",
+        Some("http://localhost:5173/invite/forged".into()),
+    )
+    .await;
+    request("owner@example.com", None).await;
+    request("newcomer@acme.org", Some(invited.clone())).await;
+    set_env(&app, crate::access::REGISTRATION, Some("open")).await;
+    set_env(&app, crate::access::ALLOWED_EMAILS, Some("@acme.org")).await;
+    request("outsider@example.com", None).await;
+    request("joiner@acme.org", None).await;
+
+    // Sending happens in the background: once the last allowed email is out, the others would be too.
+    for email in ["owner@example.com", "newcomer@acme.org", "joiner@acme.org"] {
+        emailed_proof(&mailer, email, true).await;
+    }
+    let sent: Vec<String> = mailer.emails().into_iter().map(|e| e.to).collect();
+    assert_eq!(sent.len(), 3, "{sent:?}");
+    assert!(!sent.iter().any(|to| to == "stranger@acme.org"));
+    assert!(!sent.iter().any(|to| to == "outsider@example.com"));
+}
+
+#[tokio::test]
 async fn http_clients_cannot_bypass_the_central_guard() {
     let fixture = fixture().await;
     let address = fixture.t.serve().await.unwrap();
