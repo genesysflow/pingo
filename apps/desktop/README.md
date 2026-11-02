@@ -2,7 +2,8 @@
 
 Tauri 2 hosts the shared Svelte UI from `apps/web`. In development it starts Vite on port 5173; release
 builds embed `apps/web/dist`. The first launch asks for a server origin; it is remembered in
-`$XDG_CONFIG_HOME/chat.pingo.desktop/preferences.json`. Change it under Settings → Keyboard shortcuts.
+`$XDG_CONFIG_HOME/chat.pingo.desktop/preferences.json`. Change it from the sign-in screen (the server row's **Change**) or under
+Settings → Desktop app.
 Auth stays in the webview's local storage, namespaced by server URL by RxFerrix. No token is passed in a URL.
 
 ```sh
@@ -37,16 +38,52 @@ single-instance/deep-link plugins; a cold-start invitation is queued until the U
 The tray has Open, Mute and Quit. Window size/position persist through the window-state plugin.
 Incoming mentions and DMs use native notifications when the window is unfocused; the initial inbox
 snapshot is not notified. Existing notification preferences apply. The global shortcut is configurable
-under Settings → Keyboard shortcuts, with an empty shortcut disabling it.
+under Settings → Desktop app, with an empty shortcut disabling it.
 
 The global-shortcut plugin uses platform APIs/X11 on Linux; Wayland compositors (including Hyprland)
 may refuse registration or only deliver keys to XWayland windows. In-app push-to-talk remains the fallback.
 If the plugin cannot initialize (including sessions without X11), Pingo logs the failure and continues
 with in-app push-to-talk. Pingo does not edit compositor bindings or claim system-wide Wayland support.
 
-The updater plugin is installed with empty endpoints/key, and updater artifacts/checks are disabled.
-Before enabling releases, supply an HTTPS release feed, a real public signing key and signed artifacts;
-set `bundle.createUpdaterArtifacts` and explicitly add a check/install UI.
+## Updates and server compatibility
+
+Release builds check
+`https://github.com/genesysflow/pingo/releases/latest/download/latest.json` 20 s after launch and every six
+hours. A newer release downloads in the background. A banner and Settings → Desktop app then offer
+**Restart**, which the app refuses during a call. The updater verifies every bundle against the minisign
+public key in `tauri.conf.json`. With the plugin version in use (2.14) the signature also covers the version, so a
+manifest can't relabel an older bundle. AppImage installs replace the file in place; `.deb` installs run
+`dpkg -i` through `pkexec`. Development builds skip the feed unless `PINGO_UPDATE_ENDPOINT` points at a
+manifest; they also accept plain `http` there, which release builds refuse.
+
+Before using a server, and again in the background at every launch, the app reads `/.well-known/pingo` and
+compares protocol versions (`crates/pingo-proto/src/version.rs`, `docs/API.md`). When they don't fit, it
+explains whether to update the app or the server. Servers from before that route count as protocol 1.
+
+### Releasing
+
+1. Set the same version in the root `Cargo.toml` (`[workspace.package]`) and `src-tauri/tauri.conf.json`.
+   Merge, then push a `vX.Y.Z` tag. The same tag also publishes the server container.
+2. `.github/workflows/desktop.yml` builds signed AppImage and `.deb` bundles on Ubuntu 22.04. It writes
+   `latest.json` with `scripts/update-manifest.ts` and creates a **draft** release.
+3. Check the draft, then publish it. Installed apps only see releases that are published and not marked as
+   pre-releases.
+
+The workflow needs the repository secret `TAURI_SIGNING_PRIVATE_KEY` (the contents of the private key file)
+and, if the key has one, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Keep the private key in a password manager. If
+it is lost, installed apps can't accept any new update and must be reinstalled by hand. Local release builds
+don't need the key, because `createUpdaterArtifacts` is only switched on in CI.
+
+To try the updater locally, build a signed debug AppImage at the next version, and serve a manifest pointing
+at it:
+
+```sh
+TAURI_SIGNING_PRIVATE_KEY=~/.tauri/pingo-updater.key bun run tauri build --debug --bundles appimage \
+  --config '{"version":"0.1.1","bundle":{"createUpdaterArtifacts":true}}'
+bun scripts/update-manifest.ts --version 0.1.1 --base-url http://127.0.0.1:8777 --out feed/latest.json \
+  feed/Pingo_0.1.1_amd64.AppImage   # with the .sig next to it
+PINGO_UPDATE_ENDPOINT=http://127.0.0.1:8777/latest.json ./Pingo_0.1.0_amd64.AppImage
+```
 
 WebKitGTK GPU workaround: if the window is blank, try `WEBKIT_DISABLE_DMABUF_RENDERER=1 pingo`. The
 environment must be set before WebKit starts; it can reduce rendering performance. NVIDIA plus Wayland
@@ -179,7 +216,7 @@ Linux release targets are AppImage and `.deb` under `target/release/bundle/`. GS
 disabled because calls and video use native media; GTK/WebKit dependencies still bundle automatically.
 This also avoids the optional GStreamer bundler's external `patchelf` requirement on this machine.
 macOS and Windows settings exist; build on those hosts with `bun run tauri build --bundles dmg` or `--bundles nsis` to override the Linux
-target list. Both are unverified. Updater artifacts remain disabled, native screen/camera sending belongs
+target list. Both are unverified, and the release workflow builds Linux only. Native screen/camera sending belongs
 to the parallel media work, and OAuth browser return remains unimplemented.
 
 Verified on 2026-10-25 after resumption: `cargo test --workspace` passed 77 tests (four explicitly ignored
