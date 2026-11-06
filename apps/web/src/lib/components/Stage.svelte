@@ -23,6 +23,13 @@
   const screenStream = $derived(screen?.stream ?? call.localScreen);
   const screenMid = $derived(screen?.mid ?? call.screenMid);
   const hasShare = $derived(!!screen || !!screenStream || call.sharing);
+  $effect(() => {
+    if (!hasShare) {
+      expanded = false;
+      zoom = 1;
+      drawing = false;
+    }
+  });
   const seconds = $derived(Math.max(0, Math.floor((call.clock - call.startedAt) / 1000)));
   const clock = $derived(
     `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`,

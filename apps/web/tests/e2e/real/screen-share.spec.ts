@@ -1,9 +1,7 @@
 import { test, expect } from '@playwright/test';
 import { signup, createSpace, invite, accept } from './helpers';
 
-test('screen pointers and ink stay on the video across different view sizes and zoom', async ({
-  browser,
-}) => {
+test('screen annotations stay aligned and share controls reset between shares', async ({ browser }) => {
   const contexts = await Promise.all(
     [1440, 1000].map((width) =>
       browser.newContext({
@@ -92,6 +90,33 @@ test('screen pointers and ink stay on the video across different view sizes and 
     await bob.keyboard.press('Escape');
     await expect(bob.getByRole('button', { name: 'Expand shared screen', exact: true })).toBeVisible();
     await expect(frame).toBeVisible();
+
+    for (const participant of [alice, bob]) {
+      await participant.getByRole('button', { name: 'Zoom in', exact: true }).click();
+      await participant.getByRole('button', { name: 'Draw on screen', exact: true }).click();
+      await participant.getByRole('button', { name: 'Expand shared screen', exact: true }).click();
+      await expect(participant.locator('.stage-tile').first()).toBeHidden();
+    }
+    await alice.getByRole('button', { name: 'Stop sharing', exact: true }).click();
+    for (const participant of [alice, bob]) {
+      await expect(participant.locator('.shared-screen')).toHaveCount(0);
+      await expect(participant.locator('.stage-tile').first()).toBeVisible();
+    }
+    await alice.getByRole('button', { name: 'Share your screen', exact: true }).click();
+    await expect.poll(() => video.evaluate((node: HTMLVideoElement) => node.videoWidth)).toBeGreaterThan(0);
+    for (const participant of [alice, bob]) {
+      await expect(
+        participant.getByRole('button', { name: 'Expand shared screen', exact: true }),
+      ).toHaveAttribute('aria-pressed', 'false');
+      await expect(participant.getByRole('button', { name: 'Fit shared screen', exact: true })).toHaveText(
+        'Fit',
+      );
+      await expect(participant.getByRole('button', { name: 'Point on screen', exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      await expect(participant.locator('.stage-tile').first()).toBeVisible();
+    }
   } finally {
     await Promise.all(contexts.map((c) => c.close()));
   }
