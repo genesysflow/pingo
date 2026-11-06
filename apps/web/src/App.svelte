@@ -113,17 +113,17 @@
   }
   function navigate(id: string, nextSpace?: string) {
     if (nextSpace) space = nextSpace;
+    view = 'chat';
+    stage = false;
+    thread = null;
+    members = false;
+    mobileSidebar = false;
     if (!id) {
       roomId = '';
       route(`/s/${space}`);
       return;
     }
     roomId = id;
-    view = 'chat';
-    stage = false;
-    thread = null;
-    members = false;
-    mobileSidebar = false;
     route(`/s/${space}/r/${id}`);
   }
   async function selectSpace(id: string) {
@@ -143,7 +143,7 @@
       space = spaces.data[0]?._id ?? '';
       roomId = '';
     }
-    if (space && !roomId && rooms.data?.length) navigate(rooms.data[0]._id);
+    if (view === 'chat' && space && !roomId && rooms.data?.length) navigate(rooms.data[0]._id);
   });
   $effect(() => {
     if (admitted) void heartbeat().catch((e) => notice(errorMessage(e)));

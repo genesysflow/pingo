@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { tick, untrack, onMount } from 'svelte';
+  import { tick, untrack, onMount, onDestroy } from 'svelte';
   import {
     api,
     usePaginatedQuery,
@@ -10,6 +10,7 @@
     type RoomSummary,
   } from '../data';
   import { isGrouped, sameDay } from '../logic/chat';
+  import { createReadObserver } from '../logic/read-messages';
   import type { CallController } from '../call/controller.svelte';
   import Avatar from './Avatar.svelte';
   import Icon from './Icon.svelte';
@@ -33,6 +34,9 @@
   const query = usePaginatedQuery(api.messages.list, () => ({ room: room._id }), { initialNumItems: 35 });
   const typing = useQuery(api.typing.list, () => ({ room: room._id }));
   const markRead = useMutation(api.rooms.markRead);
+  const markSeen = useMutation(api.inbox.markRead);
+  const reads = createReadObserver((messages) => markSeen({ messages }));
+  onDestroy(() => reads.destroy());
   let scroller: HTMLDivElement;
   let scrollTop = $state(0),
     viewport = $state(600),
@@ -208,7 +212,8 @@
     <div class="history-edge">
       {#if query.status === 'CanLoadMore'}<button onclick={older}
           ><Icon name="arrowUp" size={13} />Load earlier messages</button
-        >{:else}<span class="room-start">This is the start of {room.kind === 'dm' ? 'your conversation' : `#${room.name}`}.</span
+        >{:else}<span class="room-start"
+          >This is the start of {room.kind === 'dm' ? 'your conversation' : `#${room.name}`}.</span
         >{/if}
     </div>
     <div class="virtual-messages" style:height={`${total}px`}>
@@ -230,7 +235,9 @@
           {#if row.message._id === unreadId}<div class="unread-divider">
               <span>New</span>
             </div>{/if}
-          <Message message={row.message} grouped={row.grouped} {onThread} />
+          <div use:reads.observe={row.message._id}>
+            <Message message={row.message} grouped={row.grouped} {onThread} />
+          </div>
         </div>{/each}
     </div>
     {#if query.error}<p class="error" role="alert">{errorMessage(query.error)}</p>{/if}
@@ -251,7 +258,8 @@
   <div class="typing-indicator" aria-live="polite">
     {#if typing.data?.length}<span class="typing-dots"><i></i><i></i><i></i></span><strong
         >{typing.data.map((p) => p.name).join(', ')}</strong
-      > {typing.data.length === 1 ? 'is' : 'are'} typing…{/if}
+      >
+      {typing.data.length === 1 ? 'is' : 'are'} typing…{/if}
   </div>
   <Composer room={room._id} name={room.name} {space} onSent={latest} {command} />
 </div>

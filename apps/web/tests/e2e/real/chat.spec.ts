@@ -34,13 +34,15 @@ test('real auth, invites, live chat, threads, reactions, unread and mentions', a
     await expect(bob.locator('.inbox-card').filter({ hasText: 'A new update for @Bob' })).toBeVisible();
     await bob.screenshot({ path: 'screenshots/real-inbox.png', animations: 'disabled' });
     await bob.goto(roomUrl);
-    await expect(bob.getByRole('article').filter({ hasText: 'A new update for @Bob' })).toBeVisible();
+    const update = bob.getByRole('article').filter({ hasText: 'A new update for @Bob' });
+    await update.scrollIntoViewIfNeeded();
+    await expect(update).toBeInViewport();
+    await expect(bob.getByRole('button', { name: 'Inbox', exact: true }).locator('.count')).toHaveCount(0);
     await expect(bob.locator('.room-link.unread')).toHaveCount(0);
     await bob.reload();
     await expect(bob.getByRole('heading', { name: 'general', exact: true })).toBeVisible();
     await alice.screenshot({ path: 'screenshots/real-chat.png', animations: 'disabled' });
     await bob.getByRole('button', { name: 'Inbox', exact: true }).first().click();
-    await bob.getByRole('button', { name: 'Mark all done', exact: false }).click();
     await expect(bob.locator('.inbox-card')).toHaveCount(0);
     await bob.getByRole('button', { name: 'Back to rooms', exact: true }).click();
     await bob.getByRole('button', { name: 'Show members', exact: true }).click();

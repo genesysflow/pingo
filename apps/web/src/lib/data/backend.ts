@@ -270,6 +270,13 @@ export class MockBackend {
           deleted: false,
         };
         s.messages.push(msg);
+        for (const item of s.inbox) {
+          if (
+            item.message.room === msg.room &&
+            (item.message.threadRoot === msg.threadRoot || item.message._id === msg.threadRoot)
+          )
+            item.done = true;
+        }
         if (root) {
           root.replyCount++;
           root.lastReplyAt = msg._creationTime;
@@ -321,6 +328,13 @@ export class MockBackend {
         s.people[0].status = a.status as Profile['status'];
         if (a.text !== undefined) s.people[0].statusText = str(a, 'text');
         break;
+      case 'inbox:markRead': {
+        const messages = new Set(a.messages as string[]);
+        for (const item of s.inbox) {
+          if (messages.has(item.message._id)) item.done = true;
+        }
+        break;
+      }
       case 'inbox:markDone': {
         const i = s.inbox.find((i) => i._id === a.item);
         if (i) i.done = true;

@@ -67,7 +67,7 @@ Member         { user, name, color, avatarUrl?, status, roles: Id[] }
 | dms | `list` | query | – | `{ room, other: Member, unread, lastMessageAt }[]` |
 | messages | `list` | query, paginated | `room, paginationOpts` | `PaginationResult<MessageView>` newest first, top-level only |
 | messages | `thread` | query | `root` | `{ root: MessageView, replies: MessageView[] }` |
-| messages | `send` | mutation | `room, body, threadRoot?, attachments?: Id<"_storage">[]` | `Id<"messages">` (parses `@name` mentions → `mentions` rows; clears typing) |
+| messages | `send` | mutation | `room, body, threadRoot?, attachments?: Id<"_storage">[]` | `Id<"messages">` (parses `@name` mentions → `mentions` rows; clears typing and the sender's pending inbox items for the answered conversation; other threads stay pending) |
 | messages | `edit` | mutation | `message, body` | – (author only) |
 | messages | `remove` | mutation | `message` | – (author or MANAGE_MESSAGES; soft delete) |
 | messages | `search` | query | `space, text` | `MessageView[]` (max 50, FTS, only readable rooms) |
@@ -80,6 +80,7 @@ Member         { user, name, color, avatarUrl?, status, roles: Id[] }
 | inbox | `list` | query | `includeDone?` | `InboxItem[]` (max 100, newest first) |
 | inbox | `count` | query | – | `number` (not done) |
 | inbox | `markDone` | mutation | `item` | – |
+| inbox | `markRead` | mutation | `messages: Id<"messages">[]` | – (max 100; completes only the caller's inbox items for these readable messages; skips no-op writes; clients acknowledge visible messages in chat/thread views, not inbox previews or hidden tabs) |
 | inbox | `markAllDone` | mutation | – | – |
 | voice | `join` | mutation | `room` | `{ token, url: "/rtc", iceServers: { urls: string[], username: string, credential: string }[], iceExpiresAt: number \| null }` – signs a `pingo_proto::MediaClaims` token (60 s) with env `PINGO_MEDIA_SECRET`; capabilities from perms. Optional coturn REST credentials last one hour; `iceExpiresAt` is Unix milliseconds. TURN disabled: `[]` and `null`. |
 | voice | `participants` | query | `room` | `VoiceParticipant[]` |

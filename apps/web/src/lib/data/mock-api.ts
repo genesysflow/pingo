@@ -84,6 +84,7 @@ export const api = {
     list: q<{ includeDone?: boolean }, InboxItem[]>('inbox:list'),
     count: q<Empty, number>('inbox:count'),
     markDone: m<{ item: string }>('inbox:markDone'),
+    markRead: m<{ messages: string[] }>('inbox:markRead'),
     markAllDone: m<Empty>('inbox:markAllDone'),
   },
   voice: {
