@@ -19,6 +19,7 @@
     const stop = call.attachVideo?.(mid, node);
     const dimensions = new MutationObserver(() => onDimensions?.(node.width, node.height));
     dimensions.observe(node, { attributes: true, attributeFilter: ['width', 'height'] });
+    onDimensions?.(node.width, node.height);
     const resize = new ResizeObserver(() =>
       call.setVideoQuality(mid, Math.max(minHeight, node.getBoundingClientRect().height * devicePixelRatio)),
     );

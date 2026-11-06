@@ -644,6 +644,40 @@ async fn inbox_reads_are_message_scoped_authorized_and_idempotent() {
 }
 
 #[tokio::test]
+async fn inbox_reads_complete_every_matching_item_across_pages() {
+    let f = fixture().await;
+    let first = send(&f, f.ann, "@Bob first").await;
+    let second = send(&f, f.ann, "@Bob second").await;
+    f.t.mutation::<add_notifications>((f.bob, f.room, first, 205))
+        .await
+        .unwrap();
+    f.t.mutation::<add_notifications>((f.ann, f.room, first, 1))
+        .await
+        .unwrap();
+    f.t.as_user(f.bob)
+        .mutation::<inbox::markRead>((vec![first],))
+        .await
+        .unwrap();
+    let items =
+        f.t.as_user(f.bob)
+            .query::<inbox::list>((None,))
+            .await
+            .unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].message.id, second);
+    assert_eq!(
+        f.t.as_user(f.ann).query::<inbox::count>(()).await.unwrap(),
+        1
+    );
+    let before = f.t.app().db().write_log().latest();
+    f.t.as_user(f.bob)
+        .mutation::<inbox::markRead>((vec![first, first],))
+        .await
+        .unwrap();
+    assert_eq!(before, f.t.app().db().write_log().latest());
+}
+
+#[tokio::test]
 async fn answering_a_dm_completes_earlier_items_but_keeps_new_arrivals() {
     let f = fixture().await;
     let room =

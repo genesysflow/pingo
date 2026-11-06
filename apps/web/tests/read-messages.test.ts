@@ -106,3 +106,38 @@ test('large visible sets respect the API batch limit and optimistic messages are
   await vi.advanceTimersByTimeAsync(200);
   expect(markRead.mock.calls.map(([ids]) => ids.length)).toEqual([100, 5]);
 });
+
+test('one offscreen copy cannot hide another visible copy of the same message', async () => {
+  const [first, second] = [node(), node()];
+  reads.observe(first, 'shared');
+  reads.observe(second, 'shared');
+  intersect(first);
+  intersect(second, false);
+  await vi.advanceTimersByTimeAsync(100);
+  expect(markRead.mock.calls).toEqual([[['shared']]]);
+});
+
+test('unmounting one copy preserves visibility of the other and deduplicates acknowledgements', async () => {
+  const [first, second, third] = [node(), node(), node()];
+  const mounted = reads.observe(first, 'shared');
+  reads.observe(second, 'shared');
+  reads.observe(third, 'shared');
+  intersect(first);
+  intersect(second);
+  intersect(third);
+  mounted.destroy?.();
+  await vi.advanceTimersByTimeAsync(100);
+  expect(markRead.mock.calls).toEqual([[['shared']]]);
+});
+
+test('duplicate copies are not acknowledged after the last visible copy leaves', async () => {
+  const [first, second] = [node(), node()];
+  reads.observe(first, 'shared');
+  const mounted = reads.observe(second, 'shared');
+  intersect(first);
+  intersect(second);
+  intersect(first, false);
+  mounted.destroy?.();
+  await vi.advanceTimersByTimeAsync(100);
+  expect(markRead).not.toHaveBeenCalled();
+});

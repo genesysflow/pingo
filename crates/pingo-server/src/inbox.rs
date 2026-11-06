@@ -130,17 +130,25 @@ pub async fn markRead(ctx: &MutationCtx, messages: Vec<Id<Message>>) -> Result<(
     }
     for id in messages {
         get_message(&ctx.db, id, user).await?;
-        let items = ctx
-            .db
-            .query::<Mention>()
-            .with_index(Mention::by_user_message, |q| {
-                q.eq(Mention::user, user).eq(Mention::message, id)
-            })
-            .filter(|item| !item.done)
-            .take(10)
-            .await?;
-        for item in items {
-            ctx.db.patch(item.id, json!({"done": true})).await?;
+        let mut pagination = PaginationOpts::first(100);
+        loop {
+            let page = ctx
+                .db
+                .query::<Mention>()
+                .with_index(Mention::by_user_message, |q| {
+                    q.eq(Mention::user, user).eq(Mention::message, id)
+                })
+                .paginate(pagination)
+                .await?;
+            for item in page.page {
+                if !item.done {
+                    ctx.db.patch(item.id, json!({"done": true})).await?;
+                }
+            }
+            if page.is_done {
+                break;
+            }
+            pagination = PaginationOpts::after(page.continue_cursor, 100);
         }
     }
     Ok(())
