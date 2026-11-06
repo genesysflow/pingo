@@ -42,7 +42,6 @@ export class BrowserCallController extends CallState implements CallController {
   private renewalTimer?: ReturnType<typeof setTimeout>;
   private statsTimer?: ReturnType<typeof setInterval>;
   private profile: AudioProfile = 'voice';
-  screenMid = $state('');
   private queue: Promise<void> = Promise.resolve();
   private localQueue: Promise<void> = Promise.resolve();
   private previousPackets = { received: 0, lost: 0 };
@@ -59,6 +58,7 @@ export class BrowserCallController extends CallState implements CallController {
       false,
     );
     this.userId = '';
+    this.screenMid = '';
     try {
       const saved = JSON.parse(localStorage.getItem('pingo-audio') ?? 'null');
       if (saved) this.audio = saved;
@@ -391,9 +391,9 @@ export class BrowserCallController extends CallState implements CallController {
   override send(data: DataMsg) {
     if (data.type === 'speaking') return;
     const message = { ...data, participantId: this.self };
+    super.send({ ...data, participantId: this.userId });
     if (this.channel?.readyState === 'open') {
       this.channel.send(JSON.stringify(message));
-      super.send({ ...message, participantId: this.userId });
     }
   }
   override setVideoQuality(mid: string, maxHeight: number) {
