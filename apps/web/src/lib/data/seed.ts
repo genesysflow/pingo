@@ -130,6 +130,7 @@ export function createSeed(now = Date.now()) {
   rooms.find((r) => r._id === 'build')!.unread = 12;
   rooms.find((r) => r._id === 'inspiration')!.unread = 3;
   rooms.find((r) => r._id === 'design')!.mentions = 2;
+  rooms.find((r) => r._id === 'dm-maya')!.unread = 1;
   const messages: MessageView[] = [];
   let serial = 0;
   const add = (

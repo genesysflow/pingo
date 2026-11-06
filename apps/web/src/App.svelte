@@ -13,6 +13,7 @@
   import { initializeData, createCall, startActivity } from './lib/data/runtime';
   import Avatar from './lib/components/Avatar.svelte';
   import Icon from './lib/components/Icon.svelte';
+  import SidebarUnread from './lib/components/SidebarUnread.svelte';
   import Chat from './lib/components/Chat.svelte';
   import Thread from './lib/components/Thread.svelte';
   import Members from './lib/components/Members.svelte';
@@ -408,11 +409,12 @@
       >{#each spaces.data ?? [] as s}<button
           class="space-icon"
           class:active={space === s._id}
+          class:unread={s.unread || s.mentions > 0}
           style:--space-color={s.accent}
           style:--space-ink={onAccent(s.accent)}
-          aria-label={`${s.name}${s.mentions ? `, ${s.mentions} mentions` : ''}`}
+          aria-label={`${s.name}${s.unread ? ', unread messages' : ''}${s.mentions ? `, ${s.mentions} pending inbox items` : ''}`}
           aria-current={space === s._id ? 'page' : undefined}
-          title={s.name}
+          title={`${s.name}${s.unread ? ' · Unread messages' : ''}`}
           onclick={() => selectSpace(s._id)}
           >{#if s.iconUrl}<img src={s.iconUrl} alt="" />{:else}{initials(s.name)}{/if}{#if s.mentions}<span
               class="rail-badge">{s.mentions}</span
@@ -495,14 +497,14 @@
               <button
                 class="room-link"
                 class:active={roomId === r._id && view === 'chat' && !stage}
-                class:unread={r.unread > 0}
+                class:unread={r.unread > 0 || r.mentions > 0}
+                aria-label={r.name}
+                aria-describedby={r.unread || r.mentions ? `unread-${r._id}` : undefined}
                 aria-current={roomId === r._id && view === 'chat' && !stage ? 'page' : undefined}
                 onclick={() => navigate(r._id)}
                 ><Icon name={r.kind === 'stage' ? 'radio' : r.private ? 'lock' : 'hash'} size={15} /><span
-                  >{r.name}</span
-                >{#if r.mentions}<span class="count accent">{r.mentions}</span>{:else if r.unread}<span
-                    class="unread-dot"
-                  ></span>{/if}</button
+                  class="conversation-name">{r.name}</span
+                ><SidebarUnread id={`unread-${r._id}`} unread={r.unread} pending={r.mentions} /></button
               >{#if r.voice.length}<div class="room-voice">
                   <button
                     class="voice-people"
@@ -526,9 +528,16 @@
             {#each (rooms.data ?? []).filter((r) => r.kind === 'lounge') as r}<button
                 class="room-link lounge-link"
                 class:active={roomId === r._id && view === 'chat'}
+                class:unread={r.unread > 0 || r.mentions > 0}
+                aria-label={r.name}
+                aria-describedby={r.unread || r.mentions ? `unread-${r._id}` : undefined}
                 aria-current={roomId === r._id && view === 'chat' ? 'page' : undefined}
                 onclick={() => navigate(r._id)}
-                ><Icon name="radio" size={15} /><span>{r.name}</span>{#if r.voice.length}<span class="live-count"
+                ><Icon name="radio" size={15} /><span class="conversation-name">{r.name}</span><SidebarUnread
+                  id={`unread-${r._id}`}
+                  unread={r.unread}
+                  pending={r.mentions}
+                />{#if r.voice.length}<span class="live-count"
                     ><span class="live-dot"></span>{r.voice.length}</span
                   >{/if}</button
               >{/each}
@@ -546,6 +555,10 @@
           {#each dms.data ?? [] as dm}<button
               class="dm-link"
               class:active={roomId === dm.room && view === 'chat'}
+              class:unread={dm.unread > 0}
+              aria-label={dm.other.name}
+              aria-describedby={dm.unread ? `unread-${dm.room}` : undefined}
+              aria-current={roomId === dm.room && view === 'chat' ? 'page' : undefined}
               onclick={() => navigate(dm.room)}
               ><Avatar
                 url={dm.other.avatarUrl}
@@ -553,7 +566,10 @@
                 color={dm.other.color}
                 size={20}
                 status={dm.other.status}
-              /><span>{dm.other.name}</span>{#if dm.unread}<span class="unread-dot"></span>{/if}</button
+              /><span class="conversation-name">{dm.other.name}</span><SidebarUnread
+                id={`unread-${dm.room}`}
+                unread={dm.unread}
+              /></button
             >{/each}
         </nav>
         <button class="invite-people-button" onclick={() => settings('Space')}

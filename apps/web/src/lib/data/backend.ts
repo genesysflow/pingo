@@ -91,7 +91,7 @@ export class MockBackend {
           .map((r) => ({
             room: r._id,
             other: { ...s.people.find((p) => p.name === r.name)!, roles: [] },
-            unread: r._id === 'dm-maya' ? 1 : 0,
+            unread: r.unread,
             lastMessageAt: s.messages.filter((m) => m.room === r._id).at(-1)?._creationTime ?? 0,
           }));
       case 'messages:list':

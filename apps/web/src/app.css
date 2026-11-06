@@ -524,14 +524,6 @@ kbd {
   background: var(--accent);
   color: var(--on-accent);
 }
-.unread-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text);
-  flex-shrink: 0;
-  margin-right: 4px;
-}
 .you-tag {
   font: 500 10px/1 var(--font-mono);
   text-transform: uppercase;
@@ -691,6 +683,10 @@ kbd {
   color: var(--text);
   border-color: var(--border-strong);
 }
+.space-icon.unread:not(.active) {
+  color: var(--text);
+  border-color: var(--text);
+}
 .space-icon.active {
   background: var(--space-color);
   border-color: var(--space-color);
@@ -722,10 +718,10 @@ kbd {
 .rail-unread {
   position: absolute;
   left: -11px;
-  width: 4px;
-  height: 8px;
+  width: 6px;
+  height: 12px;
   border-radius: 0 3px 3px 0;
-  background: var(--muted);
+  background: var(--text);
 }
 .rail-add {
   width: 38px;
@@ -900,9 +896,9 @@ kbd {
 .nav-row > svg {
   color: var(--faint);
 }
-.room-link > span:first-of-type,
+.room-link > .conversation-name,
 .nav-row > span:first-of-type,
-.dm-link > span:not(.avatar):not(.unread-dot) {
+.dm-link > .conversation-name {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -915,9 +911,12 @@ kbd {
   background: var(--hover);
   color: var(--text);
 }
-.room-link.unread {
+.room-link.unread,
+.dm-link.unread {
   color: var(--text);
-  font-weight: 600;
+  font-weight: 650;
+  background: var(--hover);
+  box-shadow: inset 2px 0 var(--accent);
 }
 .room-link.active,
 .nav-row.active,
