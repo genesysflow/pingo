@@ -24,7 +24,7 @@
     ),
   );
   function jump(i: InboxItem) {
-    open(i.message.room, i.kind === 'reply' ? i.message.threadRoot : undefined);
+    open(i.message.room, i.message.threadRoot);
   }
   function keydown(e: KeyboardEvent) {
     if (

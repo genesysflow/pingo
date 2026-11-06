@@ -176,7 +176,8 @@ export class TauriCallController extends CallState {
   }
   override send(data: DataMsg) {
     if (!this.sessionId || data.type === 'speaking') return;
-    void this.command('call_data', { sessionId: this.sessionId, data }).then(() => super.send({ ...data, participantId: this.userId })).catch(e => { this.error = String(e); });
+    super.send({ ...data, participantId: this.userId });
+    void this.command('call_data', { sessionId: this.sessionId, data }).catch(e => { this.error = String(e); });
   }
   override setSpatialAudio(user: string, mix: { volume: number; pan: number }) {
     this.spatial[user] = { volume: Math.max(0, Math.min(1, mix.volume)), pan: Math.max(-1, Math.min(1, mix.pan)) };

@@ -21,6 +21,8 @@ export const api = {
     list: makeFunctionReference<"query", { includeDone?: boolean | null, }, Array<InboxItem>>("query", "inbox:list"),
     markAllDone: makeFunctionReference<"mutation", Record<string, never>, null>("mutation", "inbox:markAllDone"),
     markDone: makeFunctionReference<"mutation", { item: Id<"mentions">, }, null>("mutation", "inbox:markDone"),
+    /** A viewport acknowledges specific messages, so opening a room cannot consume unread threads. */
+    markRead: makeFunctionReference<"mutation", { messages: Array<Id<"messages">>, }, null>("mutation", "inbox:markRead"),
   },
   invites: {
     accept: makeFunctionReference<"mutation", { code: string, }, Id<"spaces">>("mutation", "invites:accept"),

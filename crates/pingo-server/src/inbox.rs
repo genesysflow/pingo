@@ -117,6 +117,99 @@ pub async fn markDone(ctx: &MutationCtx, item: Id<Mention>) -> Result<()> {
     }
     Ok(())
 }
+/// A viewport acknowledges specific messages, so opening a room cannot consume unread threads.
+#[mutation]
+#[allow(non_snake_case)]
+pub async fn markRead(ctx: &MutationCtx, messages: Vec<Id<Message>>) -> Result<()> {
+    let user = ctx.auth.require_user()?;
+    if messages.len() > 100 {
+        return Err(user_error(
+            "too_long",
+            "Mark at most 100 messages read at once",
+        ));
+    }
+    let mut seen = std::collections::HashSet::new();
+    for id in messages {
+        if !seen.insert(id) {
+            continue;
+        }
+        get_message(&ctx.db, id, user).await?;
+        let mut pagination = PaginationOpts::first(100);
+        loop {
+            let page = ctx
+                .db
+                .query::<Mention>()
+                .with_index(Mention::by_user_message, |q| {
+                    q.eq(Mention::user, user).eq(Mention::message, id)
+                })
+                .paginate(pagination)
+                .await?;
+            for item in page.page {
+                if !item.done {
+                    ctx.db.patch(item.id, json!({"done": true})).await?;
+                }
+            }
+            if page.is_done {
+                break;
+            }
+            pagination = PaginationOpts::after(page.continue_cursor, 100);
+        }
+    }
+    Ok(())
+}
+
+/// Replying completes the conversation being answered, preserving other rooms and threads.
+pub async fn finish_conversation(
+    ctx: &MutationCtx,
+    user: Id<rxferrix::auth::User>,
+    room: Id<Room>,
+    root: Option<Id<Message>>,
+    through: f64,
+    cursor: Option<String>,
+) -> Result<()> {
+    let page = ctx
+        .db
+        .query::<Mention>()
+        .with_index(Mention::by_user_room_done, |q| {
+            q.eq(Mention::user, user)
+                .eq(Mention::room, room)
+                .eq(Mention::done, false)
+                .lte(Mention::_creation_time, through)
+        })
+        .paginate(cursor.map_or_else(
+            || PaginationOpts::first(200),
+            |c| PaginationOpts::after(c, 200),
+        ))
+        .await?;
+    for item in page.page {
+        if let Some(message) = ctx.db.get(item.message).await?
+            && (message.thread_root == root || root == Some(message.id))
+        {
+            ctx.db.patch(item.id, json!({"done": true})).await?;
+        }
+    }
+    if !page.is_done {
+        ctx.scheduler
+            .run_after::<finish_conversation_remaining>(
+                std::time::Duration::ZERO,
+                (user, room, root, through, page.continue_cursor),
+            )
+            .await?;
+    }
+    Ok(())
+}
+
+#[internal_mutation]
+pub async fn finish_conversation_remaining(
+    ctx: &MutationCtx,
+    user: Id<rxferrix::auth::User>,
+    room: Id<Room>,
+    root: Option<Id<Message>>,
+    through: f64,
+    cursor: String,
+) -> Result<()> {
+    finish_conversation(ctx, user, room, root, through, Some(cursor)).await
+}
 #[mutation]
 #[allow(non_snake_case)]
 pub async fn markAllDone(ctx: &MutationCtx) -> Result<()> {

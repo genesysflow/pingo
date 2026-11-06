@@ -73,7 +73,8 @@ export interface CallController {
 }
 export class CallState implements CallController {
   userId = 'you';
-  screenMid = 'demo-screen';
+  // Negotiation assigns this after the share preview has already mounted.
+  screenMid = $state('demo-screen');
   connection = $state<CallController['connection']>('idle');
   error = $state('');
   media = $state<CallMedia[]>([]);

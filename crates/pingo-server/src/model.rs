@@ -176,6 +176,7 @@ pub struct VoiceState {
 #[table(name = "mentions")]
 #[index(by_user_done = [user, done])]
 #[index(by_user_room_done = [user, room, done])]
+#[index(by_user_message = [user, message])]
 #[index(by_message = [message])]
 #[aggregate(pending_per_user, group = [user, done])]
 #[aggregate(pending_per_room, group = [user, room, done])]

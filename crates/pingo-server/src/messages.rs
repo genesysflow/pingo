@@ -310,6 +310,7 @@ pub async fn send(
     }
     crate::typing::clear(&ctx.db, room, me).await?;
     let sent_at = ctx.db.get(id).await?.map_or(ctx.now(), |m| m.creation_time);
+    crate::inbox::finish_conversation(ctx, me, room, thread_root, ctx.now(), None).await?;
     match crate::rooms::read_state(&ctx.db, room, me).await? {
         Some(s) => {
             if s.last_read_at < sent_at {

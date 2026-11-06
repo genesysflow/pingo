@@ -1,8 +1,9 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
-  import { api, useQuery, isDemo, type RoomSummary } from '../data';
+  import { api, useQuery, type RoomSummary } from '../data';
   import type { CallController } from '../call/controller.svelte';
   import CallVideo from './CallVideo.svelte';
+  import CameraControl from './CameraControl.svelte';
+  import ShareSurface from './ShareSurface.svelte';
   import Avatar from './Avatar.svelte';
   import Icon from './Icon.svelte';
   import Meter from './Meter.svelte';
@@ -16,13 +17,19 @@
   const participants = useQuery(api.voice.participants, () => ({ room: room._id }));
   let spotlight = $state(''),
     drawing = $state(false),
-    isDrawing = false,
-    stroke: [number, number][] = [],
-    share = $state<HTMLDivElement>()!;
+    zoom = $state(1),
+    expanded = $state(false);
   const screen = $derived(call.media.find((m) => m.kind === 'screen'));
   const screenStream = $derived(screen?.stream ?? call.localScreen);
   const screenMid = $derived(screen?.mid ?? call.screenMid);
   const hasShare = $derived(!!screen || !!screenStream || call.sharing);
+  $effect(() => {
+    if (!hasShare) {
+      expanded = false;
+      zoom = 1;
+      drawing = false;
+    }
+  });
   const seconds = $derived(Math.max(0, Math.floor((call.clock - call.startedAt) / 1000)));
   const clock = $derived(
     `${String(Math.floor(seconds / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`,
@@ -30,7 +37,15 @@
   const people = $derived(participants.data ?? []);
   // A grid that keeps tiles at 16:10 and as large as the stage allows.
   const columns = $derived(
-    hasShare ? Math.min(Math.max(people.length, 1), 6) : people.length <= 1 ? 1 : people.length <= 4 ? 2 : people.length <= 9 ? 3 : 4,
+    hasShare
+      ? Math.min(Math.max(people.length, 1), 6)
+      : people.length <= 1
+        ? 1
+        : people.length <= 4
+          ? 2
+          : people.length <= 9
+            ? 3
+            : 4,
   );
   const rows = $derived(hasShare ? 1 : Math.max(1, Math.ceil(people.length / columns)));
   const suppressionOrder = ['Off', 'Gentle', 'Strong'] as const;
@@ -38,45 +53,18 @@
     const next = suppressionOrder[(suppressionOrder.indexOf(call.audio.suppression) + 1) % 3];
     call.configureAudio({ ...call.audio, suppression: next });
   }
-  function position(e: PointerEvent): [number, number] {
-    const r = share.getBoundingClientRect();
-    return [
-      Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)),
-      Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)),
-    ];
-  }
-  function move(e: PointerEvent) {
-    const pos = position(e);
-    call.send({ type: 'pointer', participantId: call.userId, shareMid: screenMid, pos });
-    if (isDrawing) {
-      stroke.push(pos);
-      if (stroke.length > 1)
-        call.send({
-          type: 'stroke',
-          participantId: call.userId,
-          shareMid: screenMid,
-          points: stroke.slice(-2),
-          color: 'var(--accent)',
-        });
-    }
-  }
-  onMount(() => {
-    if (!isDemo) return;
-    const timer = setInterval(() => {
-      if (call.sharing) {
-        call.send({
-          type: 'pointer',
-          participantId: 'maya',
-          shareMid: screenMid,
-          pos: [0.58 + Math.sin(Date.now() / 3000) * 0.1, 0.6 + Math.cos(Date.now() / 4000) * 0.08],
-        });
-      }
-    }, 500);
-    return () => clearInterval(timer);
-  });
 </script>
 
-<div class="stage-view">
+<svelte:window
+  onkeydowncapture={(event) => {
+    if (expanded && event.key === 'Escape') {
+      event.stopPropagation();
+      expanded = false;
+    }
+  }}
+/>
+
+<div class="stage-view" class:share-expanded={hasShare && expanded}>
   <div class="stage-bar">
     <span class="live-chip"><span class="live-dot"></span>Live</span>
     <span class="readout">{clock}</span>
@@ -118,85 +106,59 @@
             onclick={() => call.setShareMode(mode as 'Text' | 'Motion')}>{mode}</button
           >{/each}
       </div>
+      <div class="segmented share-tools" role="group" aria-label="Screen annotations">
+        <button
+          class:active={!drawing}
+          aria-pressed={!drawing}
+          aria-label="Point on screen"
+          onclick={() => (drawing = false)}><Icon name="pointer" size={15} /><span>Pointer</span></button
+        >
+        <button
+          class:active={drawing}
+          aria-pressed={drawing}
+          aria-label="Draw on screen"
+          onclick={() => (drawing = true)}><Icon name="edit" size={15} /><span>Draw</span></button
+        >
+      </div>
+      <div class="share-zoom" role="group" aria-label="Screen zoom">
+        <button
+          class="icon-button"
+          aria-label="Zoom out"
+          disabled={zoom <= 1}
+          onclick={() => (zoom = Math.max(1, zoom - 0.25))}><Icon name="minus" size={15} /></button
+        >
+        <button
+          class="zoom-fit"
+          aria-label="Fit shared screen"
+          title="Fit shared screen"
+          onclick={() => (zoom = 1)}>{zoom === 1 ? 'Fit' : `${Math.round(zoom * 100)}%`}</button
+        >
+        <button
+          class="icon-button"
+          aria-label="Zoom in"
+          disabled={zoom >= 3}
+          onclick={() => (zoom = Math.min(3, zoom + 0.25))}><Icon name="plus" size={15} /></button
+        >
+      </div>
       <button
-        class:active={drawing}
         class="icon-button"
-        aria-label="Draw on screen"
-        title="Draw"
-        aria-pressed={drawing}
-        onclick={() => (drawing = !drawing)}><Icon name="edit" size={15} /></button
+        aria-label={expanded ? 'Restore shared screen' : 'Expand shared screen'}
+        title={expanded ? 'Restore shared screen (Esc)' : 'Expand shared screen'}
+        aria-pressed={expanded}
+        onclick={() => (expanded = !expanded)}
+        ><Icon name={expanded ? 'collapse' : 'expand'} size={16} /></button
       >
     </div>
-    <!-- svelte-ignore a11y_no_noninteractive_tabindex, a11y_no_noninteractive_element_interactions (Interactive drawing surface supports pointer and keyboard input.) -->
-    <div
-      class="shared-screen"
-      bind:this={share}
-      class:drawing
-      role="application"
-      aria-label="Shared screen; move to point, enable drawing to annotate"
-      tabindex="0"
-      onpointermove={move}
-      onpointerdown={(e) => {
-        if (drawing) {
-          isDrawing = true;
-          stroke = [position(e)];
-          share.setPointerCapture(e.pointerId);
-        }
-      }}
-      onpointerup={() => (isDrawing = false)}
-      onpointercancel={() => (isDrawing = false)}
-      onpointerleave={() => {
-        if (!isDrawing)
-          call.send({ type: 'pointer', participantId: call.userId, shareMid: screenMid, pos: null });
-      }}
-      onkeydown={(e) => {
-        if (e.key === 'Enter') {
-          call.send({ type: 'pointer', participantId: call.userId, shareMid: screenMid, pos: [0.5, 0.5] });
-        }
-        if (e.key === 'd')
-          call.send({
-            type: 'stroke',
-            participantId: call.userId,
-            shareMid: screenMid,
-            points: [
-              [0.4, 0.6],
-              [0.5, 0.5],
-              [0.6, 0.6],
-            ],
-            color: 'var(--accent)',
-          });
-      }}
-    >
-      {#if screenStream || screen?.native}{#key screen?.mid ?? screenStream}<CallVideo
-            stream={screenStream}
-            mid={screen?.mid}
-            {call}
-          />{/key}{:else}<img
-          src="/direction.svg"
-          alt="Shared screen preview"
-          draggable="false"
-        />{/if}
-      <svg class="annotations" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true"
-        >{#each call.strokes.filter((s) => s.shareMid === screenMid) as s (s.id)}<polyline
-            points={s.points.map((p) => `${p[0] * 1000},${p[1] * 1000}`).join(' ')}
-            fill="none"
-            stroke={s.color}
-            stroke-width="4"
-            stroke-linecap="round"
-            class="annotation-stroke"
-          />{/each}</svg
-      >
-      {#each Object.entries(call.pointers).filter(([, p]) => p.shareMid === screenMid) as [user, pointer]}<span
-          class="share-pointer"
-          style:left={`${pointer.pos.x * 100}%`}
-          style:top={`${pointer.pos.y * 100}%`}
-          ><span></span><strong
-            >{user === call.userId
-              ? 'You'
-              : (people.find((p) => p.user === user)?.name.split(' ')[0] ?? user)}</strong
-          ></span
-        >{/each}
-    </div>{/if}
+    {#key screenMid}<ShareSurface
+        {call}
+        stream={screenStream}
+        mid={screenMid}
+        native={screen?.native}
+        {drawing}
+        {zoom}
+        participantName={(user) => people.find((p) => p.user === user)?.name.split(' ')[0] ?? user}
+      />{/key}
+  {/if}
   <div class="stage-area" class:with-share={hasShare}>
     <div
       class="stage-tiles"
@@ -206,9 +168,10 @@
       style:--max-width={people.length <= 1 && !hasShare ? '880px' : '100%'}
     >
       {#each people as p (p.user)}
-        {@const camera = p.user === call.userId && call.localCamera
-          ? { stream: call.localCamera, mid: '' }
-          : call.media.find((m) => m.user === p.user && m.kind === 'camera')}
+        {@const camera =
+          p.user === call.userId && call.localCamera
+            ? { stream: call.localCamera, mid: '' }
+            : call.media.find((m) => m.user === p.user && m.kind === 'camera')}
         {@const level = p.muted ? 0 : (call.levels[p.user] ?? 0)}
         <div
           class="stage-tile"
@@ -232,9 +195,8 @@
           <div class="tile-label">
             {#if p.muted}<Icon name="micOff" size={13} />{:else}<Meter {level} segments={5} />{/if}<strong
               >{p.name}</strong
-            >{#if p.user === call.userId}<span class="you-tag">you</span>{/if}{#if call.raised.includes(p.user)}<span
-                class="hand">✋</span
-              >{/if}
+            >{#if p.user === call.userId}<span class="you-tag">you</span
+              >{/if}{#if call.raised.includes(p.user)}<span class="hand">✋</span>{/if}
           </div>
           <label class="tile-volume"
             ><span class="sr-only">Volume for {p.name}</span><Icon name="volume" size={12} /><input
@@ -253,9 +215,13 @@
       </p>{/if}
   </div>
   <div class="call-reactions" aria-live="polite">
-    {#each call.reactions as r (r.id)}<span class="floating-reaction" style:left={`${20 + ((r.id * 19) % 60)}%`}
+    {#each call.reactions as r (r.id)}<span
+        class="floating-reaction"
+        style:left={`${20 + ((r.id * 19) % 60)}%`}
         >{r.emoji}<small
-          >{r.user === call.userId ? 'You' : (people.find((p) => p.user === r.user)?.name ?? 'Someone')}</small
+          >{r.user === call.userId
+            ? 'You'
+            : (people.find((p) => p.user === r.user)?.name ?? 'Someone')}</small
         ></span
       >{/each}
   </div>
@@ -272,7 +238,11 @@
           title={`Noise suppression${call.noiseEngine === 'DeepFilterNet' ? ' (DeepFilterNet)' : call.noiseEngine === 'Browser' ? ' (browser filter)' : ''}`}
           onclick={cycleSuppression}>NS {call.audio.suppression}</button
         >{/if}
-      <Meter level={call.muted ? 0 : (call.levels[call.userId] ?? 0)} segments={8} label="Your microphone level" />
+      <Meter
+        level={call.muted ? 0 : (call.levels[call.userId] ?? 0)}
+        segments={8}
+        label="Your microphone level"
+      />
     </div>
     <div class="stage-controls">
       <button
@@ -286,23 +256,7 @@
         title={call.deafened ? 'Undeafen' : 'Deafen'}
         onclick={() => call.toggleDeafen()}
         ><Icon name={call.deafened ? 'deafen' : 'headphones'} size={18} /></button
-      ><button
-        class:control-on={call.camera}
-        disabled={call.cameraBusy}
-        aria-label={call.camera ? 'Turn camera off' : 'Turn camera on'}
-        title={call.camera ? 'Turn camera off' : 'Turn camera on'}
-        onclick={() => call.toggleCamera()}><Icon name="video" size={18} /></button
-      >{#if call.backgroundBlurSupported}<button
-          class:control-on={call.backgroundBlur}
-          disabled={call.cameraBusy}
-          aria-pressed={call.backgroundBlur}
-          aria-label="Blur camera background"
-          title={call.cameraBusy
-            ? 'Updating camera…'
-            : call.backgroundBlur ? 'Turn background blur off' : 'Blur camera background'}
-          onclick={() => call.setBackgroundBlur(!call.backgroundBlur)}
-          ><Icon name="sparkles" size={18} /></button
-        >{/if}<button
+      ><CameraControl {call} /><button
         class:control-on={call.sharing}
         aria-label={call.sharing ? 'Stop sharing' : 'Share your screen'}
         title={call.sharing ? 'Stop sharing' : 'Share your screen'}

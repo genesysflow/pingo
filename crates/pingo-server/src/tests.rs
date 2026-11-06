@@ -593,6 +593,177 @@ async fn mentions_reply_inbox_and_completion() {
     );
 }
 #[tokio::test]
+async fn inbox_reads_are_message_scoped_authorized_and_idempotent() {
+    let f = fixture().await;
+    let first = send(&f, f.ann, "@Bob first").await;
+    let second = send(&f, f.ann, "@Bob second").await;
+    assert_eq!(
+        code(
+            f.t.as_user(f.eve)
+                .mutation::<inbox::markRead>((vec![first],))
+                .await
+                .unwrap_err()
+        ),
+        "forbidden"
+    );
+    // Another reader must never complete Bob's inbox items.
+    f.t.as_user(f.ann)
+        .mutation::<inbox::markRead>((vec![first],))
+        .await
+        .unwrap();
+    assert_eq!(
+        f.t.as_user(f.bob).query::<inbox::count>(()).await.unwrap(),
+        2
+    );
+    f.t.as_user(f.bob)
+        .mutation::<inbox::markRead>((vec![first],))
+        .await
+        .unwrap();
+    let items =
+        f.t.as_user(f.bob)
+            .query::<inbox::list>((None,))
+            .await
+            .unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].message.id, second);
+    let before = f.t.app().db().write_log().latest();
+    f.t.as_user(f.bob)
+        .mutation::<inbox::markRead>((vec![first],))
+        .await
+        .unwrap();
+    assert_eq!(before, f.t.app().db().write_log().latest());
+    assert_eq!(
+        code(
+            f.t.as_user(f.bob)
+                .mutation::<inbox::markRead>((vec![second; 101],))
+                .await
+                .unwrap_err()
+        ),
+        "too_long"
+    );
+}
+
+#[tokio::test]
+async fn inbox_reads_complete_every_matching_item_across_pages() {
+    let f = fixture().await;
+    let first = send(&f, f.ann, "@Bob first").await;
+    let second = send(&f, f.ann, "@Bob second").await;
+    f.t.mutation::<add_notifications>((f.bob, f.room, first, 205))
+        .await
+        .unwrap();
+    f.t.mutation::<add_notifications>((f.ann, f.room, first, 1))
+        .await
+        .unwrap();
+    f.t.as_user(f.bob)
+        .mutation::<inbox::markRead>((vec![first; 100],))
+        .await
+        .unwrap();
+    let items =
+        f.t.as_user(f.bob)
+            .query::<inbox::list>((None,))
+            .await
+            .unwrap();
+    assert_eq!(items.len(), 1);
+    assert_eq!(items[0].message.id, second);
+    assert_eq!(
+        f.t.as_user(f.ann).query::<inbox::count>(()).await.unwrap(),
+        1
+    );
+    let before = f.t.app().db().write_log().latest();
+    f.t.as_user(f.bob)
+        .mutation::<inbox::markRead>((vec![first, first],))
+        .await
+        .unwrap();
+    assert_eq!(before, f.t.app().db().write_log().latest());
+}
+
+#[tokio::test]
+async fn answering_a_dm_completes_earlier_items_but_keeps_new_arrivals() {
+    let f = fixture().await;
+    let room =
+        f.t.as_user(f.ann)
+            .mutation::<dms::open>((f.bob,))
+            .await
+            .unwrap();
+    for body in ["hello", "are you there?"] {
+        f.t.as_user(f.ann)
+            .mutation::<messages::send>((room, body.into(), None, None))
+            .await
+            .unwrap();
+    }
+    assert_eq!(
+        f.t.as_user(f.bob).query::<inbox::count>(()).await.unwrap(),
+        2
+    );
+    f.t.as_user(f.bob)
+        .mutation::<messages::send>((room, "yes".into(), None, None))
+        .await
+        .unwrap();
+    assert_eq!(
+        f.t.as_user(f.bob).query::<inbox::count>(()).await.unwrap(),
+        0
+    );
+    assert_eq!(
+        f.t.as_user(f.ann).query::<inbox::count>(()).await.unwrap(),
+        1
+    );
+    f.t.as_user(f.ann)
+        .mutation::<messages::send>((room, "a new message".into(), None, None))
+        .await
+        .unwrap();
+    assert_eq!(
+        f.t.as_user(f.bob).query::<inbox::count>(()).await.unwrap(),
+        1
+    );
+}
+
+#[tokio::test]
+async fn answering_or_reading_a_thread_preserves_unopened_threads() {
+    let f = fixture().await;
+    let root = send(&f, f.bob, "first thread").await;
+    let other = send(&f, f.bob, "other thread").await;
+    f.t.as_user(f.ann)
+        .mutation::<messages::send>((f.room, "first reply".into(), Some(root), None))
+        .await
+        .unwrap();
+    let other_reply =
+        f.t.as_user(f.ann)
+            .mutation::<messages::send>((f.room, "other reply".into(), Some(other), None))
+            .await
+            .unwrap();
+    let mention = send(&f, f.ann, "@Bob room mention").await;
+    f.t.as_user(f.bob)
+        .mutation::<messages::send>((f.room, "answer".into(), Some(root), None))
+        .await
+        .unwrap();
+    let items =
+        f.t.as_user(f.bob)
+            .query::<inbox::list>((None,))
+            .await
+            .unwrap();
+    assert_eq!(items.len(), 2);
+    assert!(items.iter().any(|i| i.message.id == other_reply));
+    assert!(items.iter().any(|i| i.message.id == mention));
+    send(&f, f.bob, "room answer").await;
+    f.t.as_user(f.bob)
+        .mutation::<inbox::markRead>((vec![other],))
+        .await
+        .unwrap();
+    assert_eq!(
+        f.t.as_user(f.bob).query::<inbox::count>(()).await.unwrap(),
+        1
+    );
+    f.t.as_user(f.bob)
+        .mutation::<inbox::markRead>((vec![other_reply],))
+        .await
+        .unwrap();
+    assert_eq!(
+        f.t.as_user(f.bob).query::<inbox::count>(()).await.unwrap(),
+        0
+    );
+}
+
+#[tokio::test]
 async fn unread_cap_pagination_and_noop_mark_read() {
     let f = fixture().await;
     for i in 0..105 {
@@ -1110,6 +1281,32 @@ async fn add_notifications(
     }
     Ok(())
 }
+#[tokio::test]
+async fn answered_conversation_batches_skip_other_threads_and_later_arrivals() {
+    let f = fixture().await;
+    let root = send(&f, f.bob, "An unopened thread").await;
+    let reply =
+        f.t.as_user(f.ann)
+            .mutation::<messages::send>((f.room, "A thread reply".into(), Some(root), None))
+            .await
+            .unwrap();
+    let top_level = send(&f, f.ann, "Room messages").await;
+    // The first page is entirely unrelated, so continuations must still advance.
+    f.t.mutation::<add_notifications>((f.bob, f.room, reply, 200))
+        .await
+        .unwrap();
+    f.t.mutation::<add_notifications>((f.bob, f.room, top_level, 205))
+        .await
+        .unwrap();
+    send(&f, f.bob, "Room answer").await;
+    send(&f, f.ann, "@Bob arrived after the answer").await;
+    f.t.run_due_jobs().await.unwrap();
+    assert_eq!(
+        f.t.as_user(f.bob).query::<inbox::count>(()).await.unwrap(),
+        202
+    );
+}
+
 #[tokio::test]
 async fn mark_all_done_keeps_later_arrivals_pending() {
     let f = fixture().await;
