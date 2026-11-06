@@ -3,6 +3,7 @@
   import { api, useQuery, isDemo, type RoomSummary } from '../data';
   import type { CallController } from '../call/controller.svelte';
   import CallVideo from './CallVideo.svelte';
+  import CameraControl from './CameraControl.svelte';
   import Avatar from './Avatar.svelte';
   import Icon from './Icon.svelte';
   import Meter from './Meter.svelte';
@@ -286,23 +287,7 @@
         title={call.deafened ? 'Undeafen' : 'Deafen'}
         onclick={() => call.toggleDeafen()}
         ><Icon name={call.deafened ? 'deafen' : 'headphones'} size={18} /></button
-      ><button
-        class:control-on={call.camera}
-        disabled={call.cameraBusy}
-        aria-label={call.camera ? 'Turn camera off' : 'Turn camera on'}
-        title={call.camera ? 'Turn camera off' : 'Turn camera on'}
-        onclick={() => call.toggleCamera()}><Icon name="video" size={18} /></button
-      >{#if call.backgroundBlurSupported}<button
-          class:control-on={call.backgroundBlur}
-          disabled={call.cameraBusy}
-          aria-pressed={call.backgroundBlur}
-          aria-label="Blur camera background"
-          title={call.cameraBusy
-            ? 'Updating camera…'
-            : call.backgroundBlur ? 'Turn background blur off' : 'Blur camera background'}
-          onclick={() => call.setBackgroundBlur(!call.backgroundBlur)}
-          ><Icon name="sparkles" size={18} /></button
-        >{/if}<button
+      ><CameraControl {call} /><button
         class:control-on={call.sharing}
         aria-label={call.sharing ? 'Stop sharing' : 'Share your screen'}
         title={call.sharing ? 'Stop sharing' : 'Share your screen'}
