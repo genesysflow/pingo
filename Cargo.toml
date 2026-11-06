@@ -4,7 +4,7 @@ members = ["crates/pingo-proto", "crates/pingo-server", "crates/pingo-sfu", "cra
 
 [workspace.package]
 edition = "2024"
-version = "0.1.0"
+version = "0.1.1"
 license = "MIT"
 publish = false
 
