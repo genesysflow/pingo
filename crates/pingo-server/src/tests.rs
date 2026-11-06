@@ -655,7 +655,7 @@ async fn inbox_reads_complete_every_matching_item_across_pages() {
         .await
         .unwrap();
     f.t.as_user(f.bob)
-        .mutation::<inbox::markRead>((vec![first],))
+        .mutation::<inbox::markRead>((vec![first; 100],))
         .await
         .unwrap();
     let items =

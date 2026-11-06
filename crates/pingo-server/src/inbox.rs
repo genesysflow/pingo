@@ -128,7 +128,11 @@ pub async fn markRead(ctx: &MutationCtx, messages: Vec<Id<Message>>) -> Result<(
             "Mark at most 100 messages read at once",
         ));
     }
+    let mut seen = std::collections::HashSet::new();
     for id in messages {
+        if !seen.insert(id) {
+            continue;
+        }
         get_message(&ctx.db, id, user).await?;
         let mut pagination = PaginationOpts::first(100);
         loop {
