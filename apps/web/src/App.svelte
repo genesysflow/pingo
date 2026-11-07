@@ -30,6 +30,7 @@
   import Modal from './lib/components/Modal.svelte';
   import { nativeDesktop } from './lib/desktop/bridge';
   import DesktopEvents from './lib/desktop/DesktopEvents.svelte';
+  import Notifier from './lib/components/Notifier.svelte';
   import UpdateBanner from './lib/desktop/UpdateBanner.svelte';
   import { DEFAULT_ACCENT, inkFor as onAccent, storedTheme } from './lib/theme';
   initializeData();
@@ -163,6 +164,7 @@
     members = false;
     settingsPage = page;
     workspaceMenu = false;
+    mobileSidebar = false;
     route('/settings');
   }
   function setTheme(value: string) {
@@ -316,6 +318,7 @@
 </script>
 
 {#if nativeDesktop}<DesktopEvents {call} />{/if}
+{#if admitted}<Notifier />{/if}
 
 <svelte:window
   onkeydown={keyboard}
@@ -399,7 +402,9 @@
     </main>
   {:else}
     <a href="#main-content" class="skip-link">Skip to conversation</a>
-    <nav class="space-rail" aria-label="Spaces">
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions (The close button in the sidebar is the keyboard path.) -->
+    {#if mobileSidebar}<div class="mobile-scrim" onclick={() => (mobileSidebar = false)}></div>{/if}
+    <nav class="space-rail" class:mobile-open={mobileSidebar} aria-label="Spaces">
       <button
         class="pingo-mark"
         aria-label="Pingo home"

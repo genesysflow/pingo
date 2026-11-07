@@ -159,6 +159,19 @@ input[type='range'] {
 input[type='file'] {
   padding: 6px;
   font-size: 13px;
+  color: var(--muted);
+}
+input[type='file']::file-selector-button {
+  font: inherit;
+  font-weight: 550;
+  height: 26px;
+  padding: 0 10px;
+  margin-right: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--raised);
+  color: var(--text);
+  cursor: pointer;
 }
 input[type='checkbox'] {
   accent-color: var(--accent);
@@ -245,7 +258,7 @@ kbd {
   --border-strong: #cfcbc1;
   --text: #191816;
   --muted: #67645d;
-  --faint: #9a968c;
+  --faint: #807c72;
   --accent-text: color-mix(in oklab, var(--accent) 70%, #000);
   --tint: color-mix(in oklab, var(--accent) 13%, transparent);
   --live: #1f9a55;
@@ -272,7 +285,7 @@ kbd {
   --border-strong: #3a3a40;
   --text: #ecebe6;
   --muted: #a3a29c;
-  --faint: #6f6e69;
+  --faint: #85847e;
   --accent-text: color-mix(in oklab, var(--accent) 78%, #fff);
   --tint: color-mix(in oklab, var(--accent) 16%, transparent);
   --live: #4fd08a;
@@ -433,6 +446,21 @@ kbd {
 }
 .full {
   width: 100%;
+}
+.field-hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+/* Destructive actions sit apart from the form they follow. */
+.danger-zone {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.danger-zone > p {
+  margin-bottom: 4px;
+  font-size: 13px;
 }
 .text-button {
   display: inline-flex;
@@ -721,6 +749,10 @@ kbd {
   color: #fff;
   font: 600 9.5px/13px var(--font-mono);
   text-align: center;
+}
+.app-root[data-theme='contrast'] .rail-badge {
+  background: var(--text);
+  color: var(--page);
 }
 .rail-unread {
   position: absolute;
@@ -1632,11 +1664,14 @@ kbd {
 .typing-dots i:nth-child(3) {
   animation-delay: 0.3s;
 }
+.jump-anchor {
+  position: relative;
+  height: 0;
+}
 .jump-latest {
   position: absolute;
-  left: 50%;
-  bottom: 150px;
-  transform: translateX(-50%);
+  right: 20px;
+  bottom: 10px;
   z-index: 10;
   display: flex;
   align-items: center;
@@ -1742,7 +1777,7 @@ kbd {
 .autocomplete {
   position: absolute;
   left: 0;
-  right: 0;
+  width: min(420px, 100%);
   bottom: calc(100% + 6px);
   z-index: 30;
   max-height: 300px;
@@ -1774,6 +1809,9 @@ kbd {
 .autocomplete small {
   flex: 1;
   color: var(--muted);
+}
+.autocomplete kbd {
+  margin-left: auto;
 }
 .composer-emoji {
   left: 8px;
@@ -1988,18 +2026,13 @@ kbd {
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--accent-text);
+  color: var(--muted);
   white-space: nowrap;
 }
 .inbox-kind.mention {
+  color: var(--accent-text);
   background: none;
   padding: 0;
-}
-.inbox-kind.reply {
-  color: var(--live);
-}
-.inbox-kind.dm {
-  color: var(--warn);
 }
 .inbox-card-top time {
   margin-left: 12px;
@@ -2235,7 +2268,7 @@ kbd {
   --border: #2e2e33;
   --text: #ecebe6;
   --muted: #a3a29c;
-  --faint: #6f6e69;
+  --faint: #85847e;
   --hover: rgb(255 255 255 / 0.06);
   --live: #4fd08a;
   --warn: #f0b84a;
@@ -2348,7 +2381,7 @@ kbd {
   --border-strong: #3a3a40;
   --text: #ecebe6;
   --muted: #a3a29c;
-  --faint: #6f6e69;
+  --faint: #85847e;
   --live: #4fd08a;
   --warn: #f0b84a;
   --danger: #ff6670;
@@ -3316,7 +3349,7 @@ button.dock-chip:hover {
 .auth-story {
   --text: #ecebe6;
   --muted: #a3a29c;
-  --faint: #6f6e69;
+  --faint: #85847e;
   width: 44%;
   max-width: 620px;
   flex-shrink: 0;
@@ -3341,6 +3374,11 @@ button.dock-chip:hover {
 .auth-brand img {
   width: 30px;
   height: 30px;
+}
+/* Shown on the form side only when the story panel is hidden. */
+.auth-brand-compact {
+  display: none;
+  margin-bottom: 28px;
 }
 .auth-pitch h1 {
   max-width: 460px;
@@ -3372,7 +3410,7 @@ button.dock-chip:hover {
   font: 500 11px/1.8 var(--font-mono);
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: #8a8983;
 }
 .auth-meter {
   display: flex;
@@ -3695,8 +3733,25 @@ button.dock-chip:hover {
   }
 }
 @media (max-width: 760px) {
+  /* The rail slides in with the rooms drawer so messages get the full width. */
   .space-rail {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 61;
     width: 54px;
+    transform: translateX(-100%);
+    transition: transform 0.2s;
+  }
+  .space-rail.mobile-open {
+    transform: translateX(0);
+  }
+  .mobile-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 59;
+    background: rgb(0 0 0 / 0.4);
   }
   .space-icon,
   .rail-add {
@@ -3769,6 +3824,9 @@ button.dock-chip:hover {
   .inbox-view,
   .settings-view {
     padding: 14px;
+  }
+  .inbox-footer {
+    display: none;
   }
   .inbox-card-actions {
     padding-left: 0;
@@ -3859,6 +3917,9 @@ button.dock-chip:hover {
   }
   .auth-story {
     display: none;
+  }
+  .auth-brand-compact {
+    display: flex;
   }
   .auth-form-side {
     padding: 28px 20px;

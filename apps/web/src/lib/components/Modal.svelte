@@ -10,7 +10,12 @@
   let element: HTMLDivElement;
   onMount(() => {
     const previous = document.activeElement as HTMLElement | null;
-    element.querySelector<HTMLElement>('[autofocus], input, button, textarea, select')?.focus();
+    // Prefer a field over the close button, which comes first in the DOM.
+    (
+      element.querySelector<HTMLElement>('[data-autofocus]') ??
+      element.querySelector<HTMLElement>('input:not([type=file]), textarea, select') ??
+      element.querySelector<HTMLElement>('button')
+    )?.focus();
     return () => previous?.focus();
   });
   function keydown(e: KeyboardEvent) {

@@ -7,6 +7,7 @@
   let {
     room,
     name,
+    dm = false,
     space,
     threadRoot,
     onSent,
@@ -14,6 +15,7 @@
   }: {
     room: string;
     name: string;
+    dm?: boolean;
     space: string;
     threadRoot?: string;
     onSent?: () => void;
@@ -24,7 +26,9 @@
     uploading = $state(false),
     dragOver = $state(false),
     picker = $state(false),
-    selected = $state(0);
+    selected = $state(0),
+    // Escape hides suggestions for the text as typed; typing again brings them back.
+    dismissed = $state<string | null>(null);
   let attachments = $state<{ id: string; name: string; preview: string; image: boolean }[]>([]);
   let input: HTMLTextAreaElement, fileInput: HTMLInputElement;
   let lastTyping = 0;
@@ -32,30 +36,32 @@
     startTyping = useMutation(api.typing.start),
     generateUrl = useMutation(api.files.generateUploadUrl);
   const me = useQuery(api.profiles.me);
-  const members = useQuery(api.spaces.members, () => space ? ({ space }) : 'skip');
+  const members = useQuery(api.spaces.members, () => (space ? { space } : 'skip'));
   const token = $derived(text.match(/(?:^|\s)([@:/][\w-]*)$/)?.[1] ?? '');
   const suggestions = $derived(
-    (token.startsWith('@')
-      ? (members.data ?? [])
-          .filter((p) => p.name.toLowerCase().includes(token.slice(1).toLowerCase()))
-          .map((p) => ({
-            label: p.name,
-            value: `@${p.name} `,
-            detail: 'Mention someone',
-            icon: '@',
-          }))
-      : token.startsWith(':')
-        ? Object.entries(emoji)
-            .filter(([key]) => key.includes(token.slice(1)))
-            .map(([key, val]) => ({ label: `:${key}:`, value: `${val} `, detail: '', icon: val }))
-        : token.startsWith('/')
-          ? [
-              { label: '/call', value: '/call', detail: 'Pull up a chair', icon: '↗' },
-              { label: '/share', value: '/share', detail: 'Share your screen', icon: '↗' },
-              { label: '/status', value: '/status', detail: 'Set your status', icon: '◉' },
-              { label: '/shrug', value: '¯\\_(ツ)_/¯ ', detail: 'Sometimes words aren’t enough', icon: '¯' },
-            ].filter((s) => s.label.includes(token))
-          : []
+    (dismissed === text
+      ? []
+      : token.startsWith('@')
+        ? (members.data ?? [])
+            .filter((p) => p.name.toLowerCase().includes(token.slice(1).toLowerCase()))
+            .map((p) => ({
+              label: p.name,
+              value: `@${p.name} `,
+              detail: '',
+              icon: '@',
+            }))
+        : token.startsWith(':')
+          ? Object.entries(emoji)
+              .filter(([key]) => key.includes(token.slice(1)))
+              .map(([key, val]) => ({ label: `:${key}:`, value: `${val} `, detail: '', icon: val }))
+          : token.startsWith('/')
+            ? [
+                { label: '/call', value: '/call', detail: 'Start or join the call', icon: '↗' },
+                { label: '/share', value: '/share', detail: 'Share your screen', icon: '↗' },
+                { label: '/status', value: '/status', detail: 'Set your status', icon: '◉' },
+                { label: '/shrug', value: '¯\\_(ツ)_/¯ ', detail: 'Insert a shrug', icon: '¯' },
+              ].filter((s) => s.label.includes(token))
+            : []
     ).slice(0, 8),
   );
   function choose(i: number) {
@@ -189,9 +195,12 @@
       if (suggestions.length && !text.startsWith('/')) choose(selected);
       else void submit();
     }
-    if (e.key === 'Escape') {
+    if (e.key === 'Escape' && (picker || suggestions.length)) {
+      // Close the popover only; don't let Escape also close the thread or panel around us.
+      e.preventDefault();
+      e.stopPropagation();
       picker = false;
-      text += ' ';
+      dismissed = text;
     }
   }
 </script>
@@ -220,8 +229,9 @@
             aria-selected={selected === i}
             onmousedown={(e) => e.preventDefault()}
             onclick={() => choose(i)}
-            ><span class="suggestion-icon">{s.icon}</span><strong>{s.label}</strong><small>{s.detail}</small
-            >{#if selected === i}<kbd>Tab</kbd>{/if}</button
+            ><span class="suggestion-icon">{s.icon}</span><strong>{s.label}</strong>{#if s.detail}<small
+                >{s.detail}</small
+              >{/if}{#if selected === i}<kbd>Tab</kbd>{/if}</button
           >{/each}
       </div>{/if}
     {#if picker}<div class="emoji-picker composer-emoji" role="group" aria-label="Insert emoji">
@@ -247,7 +257,7 @@
       bind:this={input}
       bind:value={text}
       aria-label={threadRoot ? 'Reply to thread' : `Message ${name}`}
-      placeholder={threadRoot ? 'Reply…' : `Message #${name}`}
+      placeholder={threadRoot ? 'Reply…' : dm ? `Message ${name}` : `Message #${name}`}
       maxlength="4000"
       rows="2"
       oninput={changed}
