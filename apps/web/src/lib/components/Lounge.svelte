@@ -51,10 +51,12 @@
     onpointerup={() => (dragging = false)}
     onpointercancel={() => (dragging = false)}
   >
-    <span class="canvas-label">Drag yourself toward people to hear them</span>
-    <div class="hearing-range" style:left={`${me.x / 8}%`} style:top={`${me.y / 5}%`}>
-      <span>Hearing range</span>
-    </div>
+    <span class="canvas-label"
+      >{call.room === room._id
+        ? 'Drag yourself toward people to hear them'
+        : 'Join to hear people. Drag to choose where you start.'}<br />Dashed circle: hearing range</span
+    >
+    <div class="hearing-range" style:left={`${me.x / 8}%`} style:top={`${me.y / 5}%`}></div>
     {#each others as p}<div
         class="lounge-person"
         style:left={`${p.pos.x / 8}%`}
@@ -99,16 +101,18 @@
         color={self.data?.color}
         size={52}
         speaking={!call.muted && (call.levels[call.userId] ?? 0) > 0.5}
-      /><strong>You</strong></button
+      /><strong>{call.room === room._id ? 'You' : 'Your spot'}</strong></button
     >
   </div>
   <div class="lounge-bottom">
     <span class="readout"
-      ><span class="live-dot"></span>{others.length + (call.room === room._id ? 1 : 0)} here · spatial audio · headphones
-      recommended</span
+      >{#if call.room === room._id}<span class="lounge-connected"
+          ><span class="live-dot"></span>Connected</span
+        >{:else}<span class="live-dot"></span>{/if}{others.length + (call.room === room._id ? 1 : 0)} here · spatial
+      audio · headphones recommended</span
     >
     {#if call.room !== room._id}<button class="button primary" onclick={() => join(room)}
         ><Icon name="headphones" size={16} />Join lounge</button
-      >{:else}<span class="lounge-connected"><span class="live-dot"></span>Connected</span>{/if}
+      >{/if}
   </div>
 </div>

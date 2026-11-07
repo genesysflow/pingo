@@ -42,8 +42,8 @@ test('screen annotations stay aligned and share controls reset between shares', 
     await signup(bob, 'ShareBob');
     await createSpace(alice);
     await accept(bob, await invite(alice));
-    await alice.getByRole('button', { name: 'Start a call', exact: false }).click();
-    await bob.getByRole('button', { name: 'Start a call', exact: false }).click();
+    await alice.getByRole('button', { name: /^(Start a call|Join call)$/ }).click();
+    await bob.getByRole('button', { name: /^(Start a call|Join call)$/ }).click();
     await expect(alice.locator('.stage-tile')).toHaveCount(2);
     await expect(bob.getByText('Connecting…', { exact: true })).toHaveCount(0);
     await alice.getByRole('button', { name: 'Share your screen', exact: true }).click();

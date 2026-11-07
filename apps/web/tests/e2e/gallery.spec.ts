@@ -3,6 +3,7 @@ import { expect, test, type Page } from '@playwright/test';
 // Captures every reachable screen in mock mode for design review. Steps are best-effort: a screen that
 // fails to open is logged and skipped so one regression doesn't hide the rest of the gallery.
 const dir = 'screenshots/review';
+test.use({ actionTimeout: 5000 });
 
 async function snap(page: Page, name: string, open: () => Promise<unknown>) {
   try {

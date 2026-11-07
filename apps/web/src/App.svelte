@@ -72,9 +72,7 @@
     me = useQuery(api.profiles.me),
     dms = useQuery(api.dms.list, () => (admitted ? {} : 'skip')),
     inboxCount = useQuery(api.inbox.count, () => (admitted ? {} : 'skip'));
-  const roomInfo = useQuery(api.rooms.get, () =>
-    admitted && roomId ? { room: roomId } : 'skip',
-  );
+  const roomInfo = useQuery(api.rooms.get, () => (admitted && roomId ? { room: roomId } : 'skip'));
   const callInfo = useQuery(api.rooms.get, () => (call.room ? { room: call.room } : 'skip'));
   const currentRoom = $derived({
     data: roomInfo.data
@@ -367,9 +365,12 @@
       <p role="alert">{errorMessage(access.error)}</p>
       <button class="button" onclick={() => auth.signOut()}>Sign out</button>
     </main>
-  {:else if !access.data?.admission || (admitted && spaces.isLoading)}<main class="empty-state" aria-busy="true"
-      >Loading…</main
+  {:else if !access.data?.admission || (admitted && spaces.isLoading)}<main
+      class="empty-state"
+      aria-busy="true"
     >
+      Loading…
+    </main>
   {:else if !admitted}<AccessGate status={access.data} joined={(s) => selectSpace(s)} />
   {:else if spaces.error}<main class="empty-state">
       <p role="alert">{errorMessage(spaces.error)}</p>
@@ -652,7 +653,7 @@
                 members = !members;
                 thread = null;
               }}><Icon name="users" size={17} /></button
-            >{#if !stage}<button
+            >{#if !stage && (call.room || currentRoom.data?.kind !== 'lounge')}<button
                 class="header-call-button"
                 class:live={!!call.room}
                 onclick={() => {
@@ -663,13 +664,23 @@
                 >{#if call.room}<span class="live-dot"></span>{:else}<Icon
                     name="headphones"
                     size={15}
-                  />{/if}<span>{call.room ? 'Back to call' : 'Start a call'}</span></button
+                  />{/if}<span
+                  >{call.room
+                    ? 'Back to call'
+                    : currentRoom.data?.voice.length
+                      ? 'Join call'
+                      : 'Start a call'}</span
+                ></button
               >{/if}{:else}<button
               class="icon-button"
               aria-label="Search"
               title="Search"
               onclick={() => (palette = true)}><Icon name="search" size={17} /></button
-            ><button class="icon-button" aria-label="Change theme" title="Theme" onclick={() => action('theme')}
+            ><button
+              class="icon-button"
+              aria-label="Change theme"
+              title="Theme"
+              onclick={() => action('theme')}
               ><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></button
             >{/if}
         </div>
@@ -695,7 +706,6 @@
             {call}
             room={callRoom.data}
             collapse={() => (stage = false)}
-            {notice}
           />{:else if currentRoom.data?.kind === 'lounge'}<Lounge
             room={currentRoom.data}
             {call}
@@ -733,7 +743,6 @@
           stage = true;
           view = 'chat';
         }}
-        {notice}
       />{/if}
   {/if}
   {#if palette && admitted}<Palette
@@ -776,12 +785,15 @@
             >Invite link or code<input bind:value={joinCode} placeholder="Paste an invite link" /></label
           >{:else}<label class="field"
             >Type<select bind:value={roomKind}
-              ><option value="chat">Chat · messages, with a call when you need one</option><option value="lounge"
-                >Lounge · spatial audio, walk up to talk</option
+              ><option value="chat">Chat · messages, with a call when you need one</option><option
+                value="lounge">Lounge · spatial audio, walk up to talk</option
               ><option value="stage">Stage · presentations and screen shares</option></select
             ></label
           ><label class="setting-toggle"
-            ><span><strong>Private room</strong></span><input type="checkbox" bind:checked={createPrivate} /></label
+            ><span><strong>Private room</strong></span><input
+              type="checkbox"
+              bind:checked={createPrivate}
+            /></label
           >{/if}{#if formError}<p class="error" role="alert">{formError}</p>{/if}<button
           class="button primary full"
           >{joinCode ? 'Join space' : modal === 'space' ? 'Create space' : 'Create room'}</button

@@ -15,6 +15,7 @@
     studio = $state(untrack(() => call.audio.studio)),
     meter = $state(0),
     testing = $state(false),
+    opening = $state(false),
     recording = $state(false),
     remaining = $state(5),
     recordingUrl = $state(''),
@@ -45,6 +46,7 @@
   async function testMic() {
     stopStream();
     error = '';
+    opening = true;
     try {
       if (!navigator.mediaDevices?.getUserMedia)
         throw new Error('Microphone access needs a supported browser on localhost or HTTPS.');
@@ -72,6 +74,8 @@
         e instanceof Error && e.name === 'NotAllowedError'
           ? 'Microphone permission was declined. Allow microphone access in your browser settings, then try again.'
           : `Couldn’t open the microphone. ${e instanceof Error ? e.message : ''}`;
+    } finally {
+      opening = false;
     }
   }
   async function record() {
@@ -134,104 +138,107 @@
 </script>
 
 {#if nativeDesktop}<NativeSoundCheck {call} {close} {complete} />{:else}
-<Modal title="Sound check" {close}>
-  <div class="wizard-progress">
-    {#each ['Devices', 'Microphone', 'Processing'] as label, i}<button
-        class:active={step === i}
-        class:complete={step > i}
-        onclick={() => (step = i)}><span>{step > i ? '✓' : i + 1}</span>{label}</button
-      >{/each}
-  </div>
-  {#if step === 0}    <label class="field"
-      >Microphone<select
-        bind:value={mic}
-        onchange={() => {
-          if (testing) void testMic();
-        }}
-        ><option value="default">System default microphone</option
-        >{#each devices.filter((d) => d.kind === 'audioinput' && d.deviceId && d.deviceId !== 'default') as d}<option
-            value={d.deviceId}>{d.label || `Microphone ${d.deviceId.slice(0, 4)}`}</option
-          >{/each}</select
-      ></label
-    ><label class="field"
-      >Speaker<select bind:value={speaker}
-        ><option value="default">System default speaker</option
-        >{#each devices.filter((d) => d.kind === 'audiooutput' && d.deviceId && d.deviceId !== 'default') as d}<option
-            value={d.deviceId}>{d.label || `Speaker ${d.deviceId.slice(0, 4)}`}</option
-          >{/each}</select
-      ></label
-    >
-    <div class="tip">
-      <Icon name="headphones" size={17} />Headphones stop your speakers from leaking into your microphone.
+  <Modal title="Sound check" {close}>
+    <div class="wizard-progress">
+      {#each ['Devices', 'Microphone', 'Processing'] as label, i}<button
+          class:active={step === i}
+          class:complete={step > i}
+          onclick={() => (step = i)}><span>{step > i ? '✓' : i + 1}</span>{label}</button
+        >{/each}
     </div>
-  {:else if step === 1}<h3>Test your microphone</h3>
-    <p class="settings-description">
-      Say a few words and watch the meter, or record five seconds and play it back. The clip runs through
-      your current settings and never leaves this device.
-    </p>
-    <div
-      class="mic-meter"
-      role="meter"
-      aria-label="Microphone input level"
-      aria-valuemin="0"
-      aria-valuemax="100"
-      aria-valuenow={Math.round(meter * 100)}
-    >
-      {#each Array(32) as _, i}<span class:lit={i / 32 < meter}></span>{/each}
-    </div>
-    <div class="inline-actions">
-      <button class="button" onclick={testMic}
-        ><Icon name="mic" size={16} />{testing ? 'Restart microphone' : 'Enable microphone'}</button
-      ><button class="button" disabled={recording} onclick={record}
-        ><Icon name={recording ? 'stop' : 'circle'} size={16} />{recording
-          ? `Recording… ${remaining}s`
-          : 'Record 5 seconds'}</button
-      ><button class="button soft" disabled={!recordingUrl || recording} onclick={playback}
-        ><Icon name="play" size={16} />Play back</button
+    {#if step === 0}
+      <label class="field"
+        >Microphone<select
+          bind:value={mic}
+          onchange={() => {
+            if (testing) void testMic();
+          }}
+          ><option value="default">System default microphone</option
+          >{#each devices.filter((d) => d.kind === 'audioinput' && d.deviceId && d.deviceId !== 'default') as d}<option
+              value={d.deviceId}>{d.label || `Microphone ${d.deviceId.slice(0, 4)}`}</option
+            >{/each}</select
+        ></label
+      ><label class="field"
+        >Speaker<select bind:value={speaker}
+          ><option value="default">System default speaker</option
+          >{#each devices.filter((d) => d.kind === 'audiooutput' && d.deviceId && d.deviceId !== 'default') as d}<option
+              value={d.deviceId}>{d.label || `Speaker ${d.deviceId.slice(0, 4)}`}</option
+            >{/each}</select
+        ></label
+      >
+      <div class="tip">
+        <Icon name="headphones" size={17} />Headphones stop your speakers from leaking into your microphone.
+      </div>
+    {:else if step === 1}<h3>Test your microphone</h3>
+      <p class="settings-description">
+        Say a few words and watch the meter, or record five seconds and play it back. The clip runs through
+        your current settings and never leaves this device.
+      </p>
+      <div
+        class="mic-meter"
+        role="meter"
+        aria-label="Microphone input level"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow={Math.round(meter * 100)}
+      >
+        {#each Array(32) as _, i}<span class:lit={i / 32 < meter}></span>{/each}
+      </div>
+      <div class="inline-actions mic-actions">
+        <button class="button" disabled={opening} aria-busy={opening} onclick={testMic}
+          ><Icon name="mic" size={16} />{opening
+            ? 'Opening microphone…'
+            : testing
+              ? 'Restart microphone'
+              : 'Enable microphone'}</button
+        ><button class="button" disabled={recording || opening} onclick={record}
+          ><Icon name={recording ? 'stop' : 'circle'} size={16} />{recording
+            ? `Recording… ${remaining}s`
+            : 'Record 5 seconds'}</button
+        ><button class="button soft" disabled={!recordingUrl || recording} onclick={playback}
+          ><Icon name="play" size={16} />Play back</button
+        >
+      </div>
+      <audio bind:this={player} src={recordingUrl}></audio>
+      <p class="muted tiny">Your browser will ask before using your microphone.</p>
+    {:else}<h3>Processing</h3>
+      <label class="field"
+        >Noise suppression
+        <div class="segmented large">
+          {#each ['Off', 'Gentle', 'Strong'] as mode}<button
+              disabled={studio}
+              class:active={suppression === mode}
+              onclick={() => (suppression = mode as AudioSettings['suppression'])}>{mode}</button
+            >{/each}
+        </div></label
+      >
+      <p class="settings-description">
+        {studio
+          ? 'Studio sends your microphone unprocessed, in stereo.'
+          : suppression === 'Off'
+            ? 'Your microphone as it is. Fine in a quiet room.'
+            : suppression === 'Gentle'
+              ? 'Removes most noise, capped at 18 dB so the room keeps some air.'
+              : 'Removes as much noise as possible. Best for loud rooms.'}
+      </p>
+      <label class="setting-toggle"
+        ><span
+          ><strong>Studio</strong><small
+            >Stereo for music and instruments. Turns off echo cancellation, noise suppression and automatic
+            gain.</small
+          ></span
+        ><input type="checkbox" role="switch" bind:checked={studio} /></label
+      >
+    {/if}
+    {#if error}<p class="error" role="alert">{error}</p>{/if}
+    <div class="wizard-footer">
+      <button class="text-button" onclick={step ? () => step-- : close}
+        >{step ? 'Back' : 'Skip for now'}</button
+      ><span>{step + 1} of 3</span><button
+        class="button primary"
+        disabled={recording}
+        onclick={() => (step < 2 ? step++ : finish())}>{step < 2 ? 'Next' : 'Done'}</button
       >
     </div>
-    <audio bind:this={player} src={recordingUrl}></audio>
-    <p class="muted tiny">Your browser will ask before using your microphone.</p>
-  {:else}<h3>Processing</h3>
-    <label class="field"
-      >Noise suppression
-      <div class="segmented large">
-        {#each ['Off', 'Gentle', 'Strong'] as mode}<button
-            disabled={studio}
-            class:active={suppression === mode}
-            onclick={() => (suppression = mode as AudioSettings['suppression'])}>{mode}</button
-          >{/each}
-      </div></label
-    >
-    <p class="settings-description">
-      {studio
-        ? 'Studio sends your microphone unprocessed, in stereo.'
-        : suppression === 'Off'
-          ? 'Your microphone as it is. Fine in a quiet room.'
-          : suppression === 'Gentle'
-            ? 'Removes most noise, capped at 18 dB so the room keeps some air.'
-            : 'Removes as much noise as possible. Best for loud rooms.'}
-    </p>
-    <label class="setting-toggle"
-      ><span
-        ><strong>Studio</strong><small
-          >Stereo for music and instruments. Turns off echo cancellation, noise suppression and automatic
-          gain.</small
-        ></span
-      ><input type="checkbox" role="switch" bind:checked={studio} /></label
-    >
-{/if}
-  {#if error}<p class="error" role="alert">{error}</p>{/if}
-  <div class="wizard-footer">
-    <button class="text-button" onclick={step ? () => step-- : close}
-      >{step ? 'Back' : 'Skip for now'}</button
-    ><span>{step + 1} of 3</span><button
-      class="button primary"
-      disabled={recording}
-      onclick={() => (step < 2 ? step++ : finish())}
-      >{step < 2 ? 'Next' : 'Done'}</button
-    >
-  </div>
-</Modal>
-
+  </Modal>
 {/if}
