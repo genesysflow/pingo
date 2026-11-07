@@ -54,7 +54,7 @@
     <span class="canvas-label"
       >{call.room === room._id
         ? 'Drag yourself toward people to hear them'
-        : 'Join to hear people. Drag to choose where you start.'}<br />Dashed circle: hearing range</span
+        : 'Join to hear people. Drag to choose where you start.'}<br />Dashed outline: hearing range</span
     >
     <div class="hearing-range" style:left={`${me.x / 8}%`} style:top={`${me.y / 5}%`}></div>
     {#each others as p}<div

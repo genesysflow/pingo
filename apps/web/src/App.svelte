@@ -87,6 +87,9 @@
         }
       : undefined,
   });
+  const callLabel = $derived(
+    call.room ? 'Back to call' : currentRoom.data?.voice.length ? 'Join call' : 'Start a call',
+  );
   const callRoom = $derived({
     data: callInfo.data
       ? {
@@ -664,6 +667,8 @@
             >{#if !stage && (call.room || currentRoom.data?.kind !== 'lounge')}<button
                 class="header-call-button"
                 class:live={!!call.room}
+                aria-label={callLabel}
+                title={callLabel}
                 onclick={() => {
                   if (call.room) {
                     stage = true;
@@ -672,13 +677,7 @@
                 >{#if call.room}<span class="live-dot"></span>{:else}<Icon
                     name="headphones"
                     size={15}
-                  />{/if}<span
-                  >{call.room
-                    ? 'Back to call'
-                    : currentRoom.data?.voice.length
-                      ? 'Join call'
-                      : 'Start a call'}</span
-                ></button
+                  />{/if}<span>{callLabel}</span></button
               >{/if}{:else}<button
               class="icon-button"
               aria-label="Search"
