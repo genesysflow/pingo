@@ -6,7 +6,8 @@
     close,
     children,
     wide = false,
-  }: { title: string; close: () => void; children: Snippet; wide?: boolean } = $props();
+    top = false,
+  }: { title: string; close: () => void; children: Snippet; wide?: boolean; top?: boolean } = $props();
   let element: HTMLDivElement;
   onMount(() => {
     const previous = document.activeElement as HTMLElement | null;
@@ -45,6 +46,7 @@
 
 <div
   class="modal-backdrop"
+  class:top
   role="presentation"
   onclick={(e) => {
     if (e.target === e.currentTarget) close();

@@ -99,7 +99,7 @@
   }
 </script>
 
-<Modal title="Search" {close}>
+<Modal title="Search" {close} top>
   <div class="palette-search">
     <Icon name="search" size={22} /><input
       aria-label="Search commands, rooms, people and messages"
@@ -127,9 +127,7 @@
         ><span class="command-icon"><Icon name={r.icon} /></span><span
           ><strong>{r.title}</strong><small>{r.detail}</small></span
         >{#if selected === i}<Icon name="enter" size={16} />{/if}</button
-      >{/each}{#if !results.length}<p class="search-empty">
-        No matches.
-      </p>{/if}
+      >{/each}{#if !results.length}<p class="search-empty">No matches.</p>{/if}
   </div>
   <div class="palette-footer">
     <span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span>

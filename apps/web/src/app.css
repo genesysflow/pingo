@@ -529,6 +529,16 @@ kbd {
 .segmented button:hover {
   color: var(--text);
 }
+.full-segmented {
+  display: flex;
+  width: 100%;
+  margin-top: 4px;
+}
+.full-segmented button {
+  flex: 1;
+  padding: 6px 10px;
+  text-align: center;
+}
 .segmented button.active {
   background: var(--surface);
   color: var(--text);
@@ -750,6 +760,9 @@ kbd {
   font: 600 9.5px/13px var(--font-mono);
   text-align: center;
 }
+.app-root[data-theme='dark'] .rail-badge {
+  color: var(--page);
+}
 .app-root[data-theme='contrast'] .rail-badge {
   background: var(--text);
   color: var(--page);
@@ -900,7 +913,7 @@ kbd {
   font: 500 10.5px/1 var(--font-mono);
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--faint);
+  color: var(--muted);
 }
 .section-label button {
   display: flex;
@@ -1325,7 +1338,7 @@ kbd {
 }
 .message-author time {
   font: 400 11px/1 var(--font-mono);
-  color: var(--faint);
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 .message.grouped {
@@ -1444,7 +1457,7 @@ kbd {
 .image-attachment small {
   margin-left: auto;
   font: 400 11px/1 var(--font-mono);
-  color: var(--faint);
+  color: var(--muted);
 }
 .file-attachment {
   display: flex;
@@ -1768,7 +1781,7 @@ kbd {
   gap: 12px;
   padding: 6px 2px 0;
   font: 400 11px/1.4 var(--font-mono);
-  color: var(--faint);
+  color: var(--muted);
 }
 .composer-hint kbd {
   font-size: 10px;
@@ -2095,6 +2108,11 @@ kbd {
   padding: 24px;
   background: rgb(8 8 9 / 0.55);
   animation: fade-in 0.12s ease-out;
+}
+/* Search keeps its field in place while results change height. */
+.modal-backdrop.top {
+  align-items: flex-start;
+  padding-top: 14vh;
 }
 .modal {
   width: 480px;
@@ -2997,7 +3015,7 @@ button.dock-chip:hover {
   font: 500 10.5px/1 var(--font-mono);
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--faint);
+  color: var(--muted);
 }
 .theme-options {
   display: grid;

@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shortcuts } from '../logic/shortcuts';
   import { ACCENTS } from '../theme';
   import { errorMessage } from '../data/errors';
   import { untrack } from 'svelte';
@@ -103,17 +104,6 @@
         notice('Notifications are saved as a preference. Allow them in your browser to receive alerts.');
     }
   }
-  const shortcuts = [
-    ['Find your way', '⌘ / Ctrl K'],
-    ['Shortcut sheet', '?'],
-    ['Send a message', 'Enter'],
-    ['A new line', 'Shift Enter'],
-    ['Bold / italic', '⌘ / Ctrl B / I'],
-    ['Close a panel', 'Esc'],
-    ['Browse Catch up', 'J / K'],
-    ['Mark inbox item done', 'E'],
-    ['Move in the lounge', 'Arrow keys'],
-  ];
 </script>
 
 <div class="settings-view">
@@ -206,7 +196,7 @@
               >Do not disturb</option
             ><option value="offline">Invisible</option></select
           ></label
-        ><button class="button primary" onclick={save}>Save profile</button>
+        ><button class="button primary full" onclick={save}>Save profile</button>
       {:else if tab === 'Audio & video'}{#if nativeDesktop}<NativeAudioControls {call} />{/if}
         <div class="audio-summary">
           <dl>
@@ -286,7 +276,7 @@
         <label class="field">Space name<input bind:value={spaceName} maxlength="32" /></label><label
           class="field color-field"
           >Accent<input type="color" bind:value={accent} /><span>{accent}</span></label
-        ><button class="button primary" onclick={save}>Save space</button>
+        ><button class="button primary full" onclick={save}>Save space</button>
         <h3>Invite people</h3>
         <p class="settings-description">Anyone with the link can join this space for the next 48 hours.</p>
         <button
