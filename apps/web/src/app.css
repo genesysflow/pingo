@@ -453,6 +453,19 @@ kbd {
   color: var(--muted);
 }
 /* Destructive actions sit apart from the form they follow. */
+.permission-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--raised);
+  font-size: 13px;
+  color: var(--muted);
+}
 .danger-zone {
   margin-top: 18px;
   padding-top: 14px;

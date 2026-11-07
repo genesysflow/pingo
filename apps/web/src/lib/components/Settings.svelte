@@ -53,7 +53,11 @@
     leaving = $state(false),
     uploading = $state(false);
   let desktop = $state(localStorage.getItem('pingo-notify-desktop') !== 'false'),
-    sounds = $state(localStorage.getItem('pingo-notify-sounds') === 'true');
+    sounds = $state(localStorage.getItem('pingo-notify-sounds') === 'true'),
+    // The switch defaults on, but a browser shows nothing until the user grants permission.
+    browserPermission = $state(
+      !nativeDesktop && 'Notification' in window ? Notification.permission : 'granted',
+    );
   $effect(() => {
     if (me.data) {
       profileName = me.data.name;
@@ -100,6 +104,7 @@
     localStorage.setItem('pingo-notify-sounds', String(sounds));
     if (desktop && !nativeDesktop && 'Notification' in window && Notification.permission === 'default') {
       const permission = await Notification.requestPermission();
+      browserPermission = permission;
       if (permission !== 'granted')
         notice('Notifications are saved as a preference. Allow them in your browser to receive alerts.');
     }
@@ -261,6 +266,17 @@
               }}
             /></label
           >{/each}
+        {#if desktop && browserPermission !== 'granted'}<div class="permission-note">
+            <span
+              >{browserPermission === 'denied'
+                ? 'Your browser blocks notifications from Pingo. Allow them in its site settings.'
+                : 'Your browser hasn’t allowed notifications yet.'}</span
+            >{#if browserPermission === 'default'}<button
+                class="button small"
+                onclick={async () => (browserPermission = await Notification.requestPermission())}
+                >Allow in browser</button
+              >{/if}
+          </div>{/if}
         <p class="settings-description">Saved on this device.</p>
       {:else if tab === 'Keyboard shortcuts'}<div class="shortcut-list">
           {#each shortcuts as [label, keys]}<div><span>{label}</span><kbd>{keys}</kbd></div>{/each}
