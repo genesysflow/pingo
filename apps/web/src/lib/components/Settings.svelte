@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { shortcuts } from '../logic/shortcuts';
   import { ACCENTS } from '../theme';
   import { errorMessage } from '../data/errors';
   import { untrack } from 'svelte';
@@ -53,7 +54,10 @@
     uploading = $state(false);
   let desktop = $state(localStorage.getItem('pingo-notify-desktop') !== 'false'),
     sounds = $state(localStorage.getItem('pingo-notify-sounds') === 'true'),
-    mentions = $state(localStorage.getItem('pingo-notify-mentions') !== 'false');
+    // The switch defaults on, but a browser shows nothing until the user grants permission.
+    browserPermission = $state(
+      !nativeDesktop && 'Notification' in window ? Notification.permission : 'granted',
+    );
   $effect(() => {
     if (me.data) {
       profileName = me.data.name;
@@ -98,24 +102,13 @@
   async function notificationChange() {
     localStorage.setItem('pingo-notify-desktop', String(desktop));
     localStorage.setItem('pingo-notify-sounds', String(sounds));
-    localStorage.setItem('pingo-notify-mentions', String(mentions));
     if (desktop && !nativeDesktop && 'Notification' in window && Notification.permission === 'default') {
       const permission = await Notification.requestPermission();
+      browserPermission = permission;
       if (permission !== 'granted')
         notice('Notifications are saved as a preference. Allow them in your browser to receive alerts.');
     }
   }
-  const shortcuts = [
-    ['Find your way', '⌘ / Ctrl K'],
-    ['Shortcut sheet', '?'],
-    ['Send a message', 'Enter'],
-    ['A new line', 'Shift Enter'],
-    ['Bold / italic', '⌘ / Ctrl B / I'],
-    ['Close a panel', 'Esc'],
-    ['Browse Catch up', 'J / K'],
-    ['Mark inbox item done', 'E'],
-    ['Move in the lounge', 'Arrow keys'],
-  ];
 </script>
 
 <div class="settings-view">
@@ -208,22 +201,25 @@
               >Do not disturb</option
             ><option value="offline">Invisible</option></select
           ></label
-        ><button class="button primary" onclick={save}
-          >Save profile</button
-        >
-      {:else if tab === 'Audio & video'}{#if nativeDesktop}<NativeAudioControls {call} />{/if}<div class="audio-summary">
+        ><button class="button primary full" onclick={save}>Save profile</button>
+      {:else if tab === 'Audio & video'}{#if nativeDesktop}<NativeAudioControls {call} />{/if}
+        <div class="audio-summary">
           <dl>
-            <div><dt>Mode</dt><dd>{call.audio.studio ? 'Studio · stereo, unprocessed' : 'Voice'}</dd></div>
             <div>
-              <dt>Noise suppression</dt><dd
-                >{call.audio.studio
+              <dt>Mode</dt>
+              <dd>{call.audio.studio ? 'Studio · stereo, unprocessed' : 'Voice'}</dd>
+            </div>
+            <div>
+              <dt>Noise suppression</dt>
+              <dd>
+                {call.audio.studio
                   ? 'Off in Studio'
                   : call.audio.suppression === 'Off'
                     ? 'Off'
                     : call.noiseEngine === 'Browser'
                       ? `${call.audio.suppression} · browser filter (DeepFilterNet unavailable)`
-                      : `${call.audio.suppression} · DeepFilterNet3`}</dd
-              >
+                      : `${call.audio.suppression} · DeepFilterNet3`}
+              </dd>
             </div>
           </dl>
           <button class="button" onclick={sound}>Sound check</button>
@@ -231,8 +227,8 @@
         <label class="setting-toggle"
           ><span
             ><strong>Studio</strong><small
-              >Stereo at 256 kbps for music and instruments. Turns off echo cancellation, noise suppression and
-              automatic gain. Use headphones.</small
+              >Stereo at 256 kbps for music and instruments. Turns off echo cancellation, noise suppression
+              and automatic gain. Use headphones.</small
             ></span
           ><input
             type="checkbox"
@@ -256,20 +252,31 @@
           Gentle limits suppression to 18 dB so the room keeps some air. Strong removes as much noise as
           possible.
         </p>
-      {:else if tab === 'Notifications'}        {#each [{ label: 'Desktop notifications', detail: 'Show a system notification for new activity.', key: 'desktop' }, { label: 'Only mentions and DMs', detail: 'Mentions, thread replies and direct messages.', key: 'mentions' }, { label: 'Sound', detail: 'Play a short sound when something arrives.', key: 'sounds' }] as setting}<label
+      {:else if tab === 'Notifications'}
+        {#each [{ label: 'Desktop notifications', detail: 'Mentions, thread replies and direct messages while Pingo is in the background.', key: 'desktop' }, { label: 'Sound', detail: 'Play a short chime when one arrives.', key: 'sounds' }] as setting}<label
             class="setting-toggle"
             ><span><strong>{setting.label}</strong><small>{setting.detail}</small></span><input
               type="checkbox"
               role="switch"
-              checked={setting.key === 'desktop' ? desktop : setting.key === 'mentions' ? mentions : sounds}
+              checked={setting.key === 'desktop' ? desktop : sounds}
               onchange={(e) => {
                 if (setting.key === 'desktop') desktop = e.currentTarget.checked;
-                else if (setting.key === 'mentions') mentions = e.currentTarget.checked;
                 else sounds = e.currentTarget.checked;
                 void notificationChange();
               }}
             /></label
           >{/each}
+        {#if desktop && browserPermission !== 'granted'}<div class="permission-note">
+            <span
+              >{browserPermission === 'denied'
+                ? 'Your browser blocks notifications from Pingo. Allow them in its site settings.'
+                : 'Your browser hasn’t allowed notifications yet.'}</span
+            >{#if browserPermission === 'default'}<button
+                class="button small"
+                onclick={async () => (browserPermission = await Notification.requestPermission())}
+                >Allow in browser</button
+              >{/if}
+          </div>{/if}
         <p class="settings-description">Saved on this device.</p>
       {:else if tab === 'Keyboard shortcuts'}<div class="shortcut-list">
           {#each shortcuts as [label, keys]}<div><span>{label}</span><kbd>{keys}</kbd></div>{/each}
@@ -285,22 +292,7 @@
         <label class="field">Space name<input bind:value={spaceName} maxlength="32" /></label><label
           class="field color-field"
           >Accent<input type="color" bind:value={accent} /><span>{accent}</span></label
-        ><button class="button primary" onclick={save}>Save space</button>
-        {#if leaving}<p>Leave this space?</p>
-          <button
-            class="button danger"
-            onclick={async () => {
-              try {
-                await leaveSpace({ space });
-                back();
-              } catch (e) {
-                error = errorMessage(e);
-              }
-            }}>Leave space</button
-          ><button class="text-button" onclick={() => (leaving = false)}>Stay here</button>{:else}<button
-            class="text-button"
-            onclick={() => (leaving = true)}>Leave this space</button
-          >{/if}
+        ><button class="button primary full" onclick={save}>Save space</button>
         <h3>Invite people</h3>
         <p class="settings-description">Anyone with the link can join this space for the next 48 hours.</p>
         <button
@@ -338,9 +330,25 @@
                 : 'Can view, send messages, invite, speak, use video, and share a screen.'}
             </p>
           </details>{/each}
-        <p class="muted tiny">
-          Role assignment will connect when role mutations are available in the backend contract.
-        </p>{/if}
+        <p class="muted tiny">Changing someone’s role isn’t available yet.</p>
+        <div class="danger-zone">
+          {#if leaving}<p>Leave this space?</p>
+            <div class="inline-actions">
+              <button
+                class="button danger"
+                onclick={async () => {
+                  try {
+                    await leaveSpace({ space });
+                    back();
+                  } catch (e) {
+                    error = errorMessage(e);
+                  }
+                }}>Leave space</button
+              ><button class="button" onclick={() => (leaving = false)}>Stay here</button>
+            </div>{:else}<button class="button small danger" onclick={() => (leaving = true)}
+              >Leave this space</button
+            >{/if}
+        </div>{/if}
       {#if error}<p class="error" role="alert">{error}</p>{/if}
     </div>
   </div>

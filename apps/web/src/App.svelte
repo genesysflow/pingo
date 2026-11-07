@@ -30,6 +30,8 @@
   import Modal from './lib/components/Modal.svelte';
   import { nativeDesktop } from './lib/desktop/bridge';
   import DesktopEvents from './lib/desktop/DesktopEvents.svelte';
+  import { shortcuts } from './lib/logic/shortcuts';
+  import Notifier from './lib/components/Notifier.svelte';
   import UpdateBanner from './lib/desktop/UpdateBanner.svelte';
   import { DEFAULT_ACCENT, inkFor as onAccent, storedTheme } from './lib/theme';
   initializeData();
@@ -58,6 +60,7 @@
     modal = $state<'space' | 'room' | 'status' | null>(null),
     createName = $state(''),
     joinCode = $state(''),
+    spaceMode = $state<'create' | 'join'>('create'),
     formError = $state(''),
     roomKind = $state<'chat' | 'lounge' | 'stage'>('chat'),
     customStatus = $state(''),
@@ -72,9 +75,7 @@
     me = useQuery(api.profiles.me),
     dms = useQuery(api.dms.list, () => (admitted ? {} : 'skip')),
     inboxCount = useQuery(api.inbox.count, () => (admitted ? {} : 'skip'));
-  const roomInfo = useQuery(api.rooms.get, () =>
-    admitted && roomId ? { room: roomId } : 'skip',
-  );
+  const roomInfo = useQuery(api.rooms.get, () => (admitted && roomId ? { room: roomId } : 'skip'));
   const callInfo = useQuery(api.rooms.get, () => (call.room ? { room: call.room } : 'skip'));
   const currentRoom = $derived({
     data: roomInfo.data
@@ -86,6 +87,9 @@
         }
       : undefined,
   });
+  const callLabel = $derived(
+    call.room ? 'Back to call' : currentRoom.data?.voice.length ? 'Join call' : 'Start a call',
+  );
   const callRoom = $derived({
     data: callInfo.data
       ? {
@@ -165,6 +169,7 @@
     members = false;
     settingsPage = page;
     workspaceMenu = false;
+    mobileSidebar = false;
     route('/settings');
   }
   function setTheme(value: string) {
@@ -257,7 +262,7 @@
     formError = '';
     try {
       if (modal === 'space') {
-        if (joinCode.trim()) {
+        if (spaceMode === 'join') {
           const code = joinCode.trim().split('/').at(-1)!;
           const s = await acceptInvite({ code });
           await selectSpace(s);
@@ -318,6 +323,7 @@
 </script>
 
 {#if nativeDesktop}<DesktopEvents {call} />{/if}
+{#if admitted}<Notifier />{/if}
 
 <svelte:window
   onkeydown={keyboard}
@@ -367,9 +373,12 @@
       <p role="alert">{errorMessage(access.error)}</p>
       <button class="button" onclick={() => auth.signOut()}>Sign out</button>
     </main>
-  {:else if !access.data?.admission || (admitted && spaces.isLoading)}<main class="empty-state" aria-busy="true"
-      >Loading…</main
+  {:else if !access.data?.admission || (admitted && spaces.isLoading)}<main
+      class="empty-state"
+      aria-busy="true"
     >
+      Loading…
+    </main>
   {:else if !admitted}<AccessGate status={access.data} joined={(s) => selectSpace(s)} />
   {:else if spaces.error}<main class="empty-state">
       <p role="alert">{errorMessage(spaces.error)}</p>
@@ -380,6 +389,7 @@
         class="onboarding-card"
         onsubmit={(e) => {
           modal = 'space';
+          spaceMode = joinCode.trim() ? 'join' : 'create';
           void submitCreate(e);
         }}
       >
@@ -398,7 +408,9 @@
     </main>
   {:else}
     <a href="#main-content" class="skip-link">Skip to conversation</a>
-    <nav class="space-rail" aria-label="Spaces">
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions (The close button in the sidebar is the keyboard path.) -->
+    {#if mobileSidebar}<div class="mobile-scrim" onclick={() => (mobileSidebar = false)}></div>{/if}
+    <nav class="space-rail" class:mobile-open={mobileSidebar} aria-label="Spaces">
       <button
         class="pingo-mark"
         aria-label="Pingo home"
@@ -652,9 +664,11 @@
                 members = !members;
                 thread = null;
               }}><Icon name="users" size={17} /></button
-            >{#if !stage}<button
+            >{#if !stage && (call.room || currentRoom.data?.kind !== 'lounge')}<button
                 class="header-call-button"
                 class:live={!!call.room}
+                aria-label={callLabel}
+                title={callLabel}
                 onclick={() => {
                   if (call.room) {
                     stage = true;
@@ -663,13 +677,17 @@
                 >{#if call.room}<span class="live-dot"></span>{:else}<Icon
                     name="headphones"
                     size={15}
-                  />{/if}<span>{call.room ? 'Back to call' : 'Start a call'}</span></button
+                  />{/if}<span>{callLabel}</span></button
               >{/if}{:else}<button
               class="icon-button"
               aria-label="Search"
               title="Search"
               onclick={() => (palette = true)}><Icon name="search" size={17} /></button
-            ><button class="icon-button" aria-label="Change theme" title="Theme" onclick={() => action('theme')}
+            ><button
+              class="icon-button"
+              aria-label="Change theme"
+              title="Theme"
+              onclick={() => action('theme')}
               ><Icon name={theme === 'light' ? 'moon' : 'sun'} size={17} /></button
             >{/if}
         </div>
@@ -695,7 +713,6 @@
             {call}
             room={callRoom.data}
             collapse={() => (stage = false)}
-            {notice}
           />{:else if currentRoom.data?.kind === 'lounge'}<Lounge
             room={currentRoom.data}
             {call}
@@ -733,7 +750,6 @@
           stage = true;
           view = 'chat';
         }}
-        {notice}
       />{/if}
   {/if}
   {#if palette && admitted}<Palette
@@ -746,8 +762,7 @@
     />{/if}
   {#if shortcutSheet}<Modal title="Keyboard shortcuts" close={() => (shortcutSheet = false)}
       ><div class="shortcut-list">
-        {#each [['Search', 'Ctrl / ⌘ K'], ['Show shortcuts', '?'], ['Send a message', 'Enter'], ['New line', 'Shift Enter'], ['Bold / italic', 'Ctrl / ⌘ B / I'], ['Browse the inbox', 'J / K'], ['Mark inbox item done', 'E'], ['Move in a lounge', '← ↑ ↓ →'], ['Point / draw on a share', 'Enter / D'], ['Close a panel', 'Esc']] as [label, key]}<div
-          >
+        {#each shortcuts as [label, key]}<div>
             <span>{label}</span><kbd>{key}</kbd>
           </div>{/each}
       </div></Modal
@@ -764,27 +779,46 @@
       title={modal === 'space' ? 'Create or join a space' : 'New room'}
       close={() => (modal = null)}
       ><form onsubmit={submitCreate}>
-        <label class="field"
-          >{modal === 'space' ? 'Space name' : 'Room name'}<input
-            bind:value={createName}
-            maxlength="32"
-            placeholder={modal === 'space' ? 'Acme' : 'design-review'}
-            required={!joinCode}
-          /></label
-        >{#if modal === 'space'}<div class="auth-divider"><span>or join one</span></div>
-          <label class="field"
-            >Invite link or code<input bind:value={joinCode} placeholder="Paste an invite link" /></label
+        {#if modal === 'space'}<div class="segmented full-segmented" role="group" aria-label="Create or join">
+            <button
+              type="button"
+              class:active={spaceMode === 'create'}
+              aria-pressed={spaceMode === 'create'}
+              onclick={() => (spaceMode = 'create')}>Create a space</button
+            ><button
+              type="button"
+              class:active={spaceMode === 'join'}
+              aria-pressed={spaceMode === 'join'}
+              onclick={() => (spaceMode = 'join')}>Join with an invite</button
+            >
+          </div>{/if}
+        {#if modal === 'room' || spaceMode === 'create'}<label class="field"
+            >{modal === 'space' ? 'Space name' : 'Room name'}<input
+              bind:value={createName}
+              maxlength="32"
+              placeholder={modal === 'space' ? 'Acme' : 'design-review'}
+              required
+            /></label
           >{:else}<label class="field"
+            >Invite link or code<input
+              bind:value={joinCode}
+              placeholder="Paste an invite link"
+              required
+            /></label
+          >{/if}{#if modal === 'room'}<label class="field"
             >Type<select bind:value={roomKind}
-              ><option value="chat">Chat · messages, with a call when you need one</option><option value="lounge"
-                >Lounge · spatial audio, walk up to talk</option
+              ><option value="chat">Chat · messages, with a call when you need one</option><option
+                value="lounge">Lounge · spatial audio, walk up to talk</option
               ><option value="stage">Stage · presentations and screen shares</option></select
             ></label
           ><label class="setting-toggle"
-            ><span><strong>Private room</strong></span><input type="checkbox" bind:checked={createPrivate} /></label
+            ><span><strong>Private room</strong></span><input
+              type="checkbox"
+              bind:checked={createPrivate}
+            /></label
           >{/if}{#if formError}<p class="error" role="alert">{formError}</p>{/if}<button
           class="button primary full"
-          >{joinCode ? 'Join space' : modal === 'space' ? 'Create space' : 'Create room'}</button
+          >{modal === 'room' ? 'Create room' : spaceMode === 'join' ? 'Join space' : 'Create space'}</button
         >
       </form></Modal
     >{/if}

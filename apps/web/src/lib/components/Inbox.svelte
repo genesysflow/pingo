@@ -81,7 +81,9 @@
           ><span
             >{item.room.kind === 'dm'
               ? item.message.author.name
-              : `${item.space?.name ?? ''} · #${item.room.name}`}<time>{formatTime(item.message._creationTime)}</time></span
+              : `${item.space?.name ?? ''} · #${item.room.name}`}<time
+              >{formatTime(item.message._creationTime)}</time
+            ></span
           >
         </div>
         <div class="inbox-card-body">
@@ -105,10 +107,7 @@
             id={`inbox-${i}`}
             onfocus={() => (selected = i)}
             onclick={() => jump(item)}
-            >{item.kind === 'reply' ? 'Open thread' : 'Open'}<Icon
-              name="arrowRight"
-              size={14}
-            /></button
+            >{item.kind === 'reply' ? 'Open thread' : 'Open'}<Icon name="arrowRight" size={14} /></button
           ><button
             class="button small"
             onclick={() => done({ item: item._id }).catch((e) => (error = errorMessage(e)))}
@@ -126,7 +125,7 @@
         <button class="button" onclick={() => open(isDemo ? 'design' : '')}>Back to rooms</button>
       </div>{/if}
   </div>
-  <div class="inbox-footer">
-    <span><kbd>j</kbd><kbd>k</kbd> move · <kbd>e</kbd> done</span>
-  </div>
+  {#if filtered.length}<div class="inbox-footer">
+      <span><kbd>j</kbd><kbd>k</kbd> move · <kbd>e</kbd> done</span>
+    </div>{/if}
 </div>

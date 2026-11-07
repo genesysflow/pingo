@@ -7,13 +7,7 @@
   import Avatar from './Avatar.svelte';
   import Icon from './Icon.svelte';
   import Meter from './Meter.svelte';
-  let {
-    call,
-    room,
-    collapse,
-    notice,
-  }: { call: CallController; room: RoomSummary; collapse: () => void; notice: (text: string) => void } =
-    $props();
+  let { call, room, collapse }: { call: CallController; room: RoomSummary; collapse: () => void } = $props();
   const participants = useQuery(api.voice.participants, () => ({ room: room._id }));
   let spotlight = $state(''),
     drawing = $state(false),
@@ -77,13 +71,7 @@
             : 'Connecting…'}</span
       >{/if}
     <span class="stage-bar-actions">
-      <button
-        class="icon-button"
-        aria-label="Pop out"
-        title="Pop out"
-        onclick={() => notice('Pop-out windows are coming to the desktop app.')}
-        ><Icon name="external" size={16} /></button
-      ><button class="icon-button" aria-label="Minimize call" title="Minimize" onclick={collapse}
+      <button class="icon-button" aria-label="Minimize call" title="Minimize" onclick={collapse}
         ><Icon name="collapse" size={16} /></button
       >
     </span>
@@ -190,7 +178,7 @@
             class="tile-main"
             aria-label={`Spotlight ${p.name}`}
             onclick={() => (spotlight = spotlight === p.user ? '' : p.user)}
-            >{#if !camera}<Avatar name={p.name} color={p.color} size={hasShare ? 40 : 84} />{/if}</button
+            >{#if !camera}<Avatar name={p.name} color={p.color} size={84} />{/if}</button
           >
           <div class="tile-label">
             {#if p.muted}<Icon name="micOff" size={13} />{:else}<Meter {level} segments={5} />{/if}<strong
@@ -236,7 +224,7 @@
           class:off={call.audio.suppression === 'Off'}
           aria-label={`Noise suppression: ${call.audio.suppression}. Change`}
           title={`Noise suppression${call.noiseEngine === 'DeepFilterNet' ? ' (DeepFilterNet)' : call.noiseEngine === 'Browser' ? ' (browser filter)' : ''}`}
-          onclick={cycleSuppression}>NS {call.audio.suppression}</button
+          onclick={cycleSuppression}>Noise {call.audio.suppression}</button
         >{/if}
       <Meter
         level={call.muted ? 0 : (call.levels[call.userId] ?? 0)}

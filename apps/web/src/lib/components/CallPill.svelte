@@ -7,12 +7,10 @@
     call,
     self,
     expand,
-    notice,
   }: {
     call: CallController;
     self?: { name: string; color: string; avatarUrl?: string } | null;
     expand: () => void;
-    notice: (text: string) => void;
   } = $props();
   let x = $state<number | null>(null),
     y = $state<number | null>(null),
@@ -119,11 +117,6 @@
           call.toggleShare();
           if (call.sharing) expand();
         }}><Icon name="share" size={16} /></button
-      ><button
-        aria-label="Pop out call"
-        title="Pop out"
-        onclick={() => notice('Pop-out windows are coming to the desktop app.')}
-        ><Icon name="external" size={15} /></button
       ><button class="leave-control" aria-label="Leave call" title="Leave" onclick={() => call.leave()}
         ><Icon name="leave" size={16} /></button
       >

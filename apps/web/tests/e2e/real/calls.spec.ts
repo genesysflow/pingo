@@ -48,7 +48,7 @@ async function decodedAudio(page: Page) {
   });
 }
 async function join(page: Page) {
-  await page.getByRole('button', { name: 'Start a call', exact: false }).click();
+  await page.getByRole('button', { name: /^(Start a call|Join call)$/ }).click();
   await expect(page.locator('.stage-tile')).toHaveCount(2, { timeout: 20_000 });
   await expect(page.getByText('Connecting…', { exact: true })).toHaveCount(0);
 }
@@ -113,7 +113,7 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     await signup(bob, 'CallBob');
     await createSpace(alice);
     await accept(bob, await invite(alice));
-    await alice.getByRole('button', { name: 'Start a call', exact: false }).click();
+    await alice.getByRole('button', { name: /^(Start a call|Join call)$/ }).click();
     await expect(alice.locator('.stage-tile')).toHaveCount(1);
     // Self-view must work even when there is nobody to forward camera media back.
     const selfCamera = alice.locator('video[aria-label="CallAlice\'s camera"]');
@@ -121,10 +121,16 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     await expect(selfCamera).toBeVisible();
     await expect.poll(() => selfCamera.evaluate((node: HTMLVideoElement) => node.videoWidth)).toBe(1920);
     expect(await selfCamera.evaluate((node: HTMLVideoElement) => node.muted)).toBe(true);
-    const firstCapture = await selfCamera.evaluateHandle((node: HTMLVideoElement) => node.srcObject as MediaStream);
+    const firstCapture = await selfCamera.evaluateHandle(
+      (node: HTMLVideoElement) => node.srcObject as MediaStream,
+    );
     await alice.getByRole('button', { name: 'Turn camera off', exact: true }).click();
     await expect(selfCamera).toHaveCount(0);
-    expect(await firstCapture.evaluate(stream => stream.getTracks().every(track => track.readyState === 'ended'))).toBe(true);
+    expect(
+      await firstCapture.evaluate((stream) =>
+        stream.getTracks().every((track) => track.readyState === 'ended'),
+      ),
+    ).toBe(true);
     await firstCapture.dispose();
     await join(bob);
     await expect(alice.locator('.stage-tile')).toHaveCount(2);
@@ -136,7 +142,9 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
       for (const page of [alice, bob]) {
         const relayed = await page.evaluate(async () => {
           const stats = await window.__peers.at(-1)!.getStats();
-          const transport = [...stats.values()].find(r => r.type === 'transport' && r.selectedCandidatePairId);
+          const transport = [...stats.values()].find(
+            (r) => r.type === 'transport' && r.selectedCandidatePairId,
+          );
           const pair = stats.get(transport.selectedCandidatePairId);
           return stats.get(pair.localCandidateId).candidateType;
         });
@@ -173,22 +181,34 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     await expect(bob.locator('.floating-reaction')).toContainText('❤️');
     await alice.getByRole('button', { name: 'Turn camera on', exact: true }).click();
     await expect(selfCamera).toBeVisible();
-    await expect.poll(() => selfCamera.evaluate((node: HTMLVideoElement) => node.videoWidth)).toBeGreaterThan(0);
+    await expect
+      .poll(() => selfCamera.evaluate((node: HTMLVideoElement) => node.videoWidth))
+      .toBeGreaterThan(0);
     const camera = bob.locator('video[aria-label="CallAlice\'s camera"]');
     await expect(camera).toBeVisible();
-    await expect.poll(() => camera.evaluate((node: HTMLVideoElement) => node.videoWidth), { timeout: 25_000 }).toBeGreaterThanOrEqual(960);
+    await expect
+      .poll(() => camera.evaluate((node: HTMLVideoElement) => node.videoWidth), { timeout: 25_000 })
+      .toBeGreaterThanOrEqual(960);
     await alice.getByRole('button', { name: 'Camera settings', exact: true }).click();
     const blur = alice.getByRole('switch', { name: 'Blur camera background', exact: true });
     await blur.click();
     await expect(blur).toBeChecked({ timeout: 25_000 });
-    await expect.poll(() => selfCamera.evaluate((node: HTMLVideoElement) => node.videoHeight)).toBeGreaterThanOrEqual(720);
-    expect(await selfCamera.evaluate((node: HTMLVideoElement) =>
-      (node.srcObject as MediaStream).getVideoTracks()[0].getSettings().frameRate)).toBe(30);
+    await expect
+      .poll(() => selfCamera.evaluate((node: HTMLVideoElement) => node.videoHeight))
+      .toBeGreaterThanOrEqual(720);
+    expect(
+      await selfCamera.evaluate(
+        (node: HTMLVideoElement) =>
+          (node.srcObject as MediaStream).getVideoTracks()[0].getSettings().frameRate,
+      ),
+    ).toBe(30);
     const blurredBytes = await inbound(bob, 'video');
     await expect.poll(() => inbound(bob, 'video')).toBeGreaterThan(blurredBytes);
     await blur.click();
     await expect(blur).not.toBeChecked();
-    await expect.poll(() => selfCamera.evaluate((node: HTMLVideoElement) => node.videoWidth)).toBeGreaterThanOrEqual(960);
+    await expect
+      .poll(() => selfCamera.evaluate((node: HTMLVideoElement) => node.videoWidth))
+      .toBeGreaterThanOrEqual(960);
     await alice.getByRole('button', { name: 'Turn camera off', exact: true }).click();
     await expect(selfCamera).toHaveCount(0);
     await expect(camera).toHaveCount(0);
@@ -198,7 +218,9 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     await expect(video).toBeVisible({ timeout: 20_000 });
     await expect.poll(() => inbound(bob, 'video'), { timeout: 20_000 }).toBeGreaterThan(0);
     // Receiving bytes alone used to pass while the SFU stayed on the half-size layer.
-    await expect.poll(() => video.evaluate((node: HTMLVideoElement) => node.videoWidth), { timeout: 25_000 }).toBe(1280);
+    await expect
+      .poll(() => video.evaluate((node: HTMLVideoElement) => node.videoWidth), { timeout: 25_000 })
+      .toBe(1280);
     await bob.locator('.shared-screen').focus();
     await bob.keyboard.press('Enter');
     await expect(alice.locator('.share-pointer')).toBeVisible();
@@ -209,7 +231,9 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
       // Credential renewal uses the same reconnect path. Keep the capture alive through replacement.
       const before = await alice.evaluate(() => window.__peers.length);
       await alice.evaluate(() => window.__rtcSockets.at(-1)!.close());
-      await expect.poll(() => alice.evaluate(() => window.__peers.length), { timeout: 20_000 }).toBeGreaterThan(before);
+      await expect
+        .poll(() => alice.evaluate(() => window.__peers.length), { timeout: 20_000 })
+        .toBeGreaterThan(before);
       await expect(alice.getByRole('button', { name: 'Stop sharing', exact: true })).toBeVisible();
       await expect(video).toBeVisible({ timeout: 20_000 });
       await expect.poll(() => inbound(bob, 'video'), { timeout: 20_000 }).toBeGreaterThan(0);
@@ -226,17 +250,25 @@ test('two browsers receive real audio, speaking/mute, screen video and SFU parti
     await alice.getByRole('button', { name: 'Turn camera on', exact: true }).click();
     await expect(selfCamera).toBeVisible();
     await expect(camera).toBeVisible();
-    const capture = await selfCamera.evaluateHandle((node: HTMLVideoElement) => node.srcObject as MediaStream);
+    const capture = await selfCamera.evaluateHandle(
+      (node: HTMLVideoElement) => node.srcObject as MediaStream,
+    );
     const alicePeersBefore = await alice.evaluate(() => window.__peers.length);
     await alice.evaluate(() => window.__rtcSockets.at(-1)!.close());
-    await expect.poll(() => alice.evaluate(() => window.__peers.length), { timeout: 20_000 }).toBeGreaterThan(alicePeersBefore);
+    await expect
+      .poll(() => alice.evaluate(() => window.__peers.length), { timeout: 20_000 })
+      .toBeGreaterThan(alicePeersBefore);
     await expect(selfCamera).toBeVisible();
-    expect(await selfCamera.evaluate((node: HTMLVideoElement, stream) => node.srcObject === stream, capture)).toBe(true);
+    expect(
+      await selfCamera.evaluate((node: HTMLVideoElement, stream) => node.srcObject === stream, capture),
+    ).toBe(true);
     await expect(camera).toBeVisible();
     await expect.poll(() => camera.evaluate((node: HTMLVideoElement) => node.videoWidth)).toBeGreaterThan(0);
     await alice.getByRole('button', { name: 'Leave this call', exact: true }).click();
     await expect(selfCamera).toHaveCount(0);
-    expect(await capture.evaluate(stream => stream.getTracks().every(track => track.readyState === 'ended'))).toBe(true);
+    expect(
+      await capture.evaluate((stream) => stream.getTracks().every((track) => track.readyState === 'ended')),
+    ).toBe(true);
     await capture.dispose();
     await expect(bob.locator('.stage-tile')).toHaveCount(1);
     expect(errors).toEqual([]);

@@ -6,11 +6,17 @@
     close,
     children,
     wide = false,
-  }: { title: string; close: () => void; children: Snippet; wide?: boolean } = $props();
+    top = false,
+  }: { title: string; close: () => void; children: Snippet; wide?: boolean; top?: boolean } = $props();
   let element: HTMLDivElement;
   onMount(() => {
     const previous = document.activeElement as HTMLElement | null;
-    element.querySelector<HTMLElement>('[autofocus], input, button, textarea, select')?.focus();
+    // Prefer a field over the close button, which comes first in the DOM.
+    (
+      element.querySelector<HTMLElement>('[data-autofocus]') ??
+      element.querySelector<HTMLElement>('input:not([type=file]), textarea, select') ??
+      element.querySelector<HTMLElement>('button')
+    )?.focus();
     return () => previous?.focus();
   });
   function keydown(e: KeyboardEvent) {
@@ -40,6 +46,7 @@
 
 <div
   class="modal-backdrop"
+  class:top
   role="presentation"
   onclick={(e) => {
     if (e.target === e.currentTarget) close();

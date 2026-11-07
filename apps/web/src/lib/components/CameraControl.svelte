@@ -79,6 +79,11 @@
     width: 24px;
     border-radius: 3px 8px 8px 3px;
   }
+  @media (max-width: 760px) {
+    .camera-control .camera-settings {
+      width: 44px;
+    }
+  }
   .camera-settings[aria-expanded='true'] {
     background: var(--raised);
   }

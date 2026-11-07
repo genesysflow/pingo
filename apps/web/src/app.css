@@ -159,6 +159,19 @@ input[type='range'] {
 input[type='file'] {
   padding: 6px;
   font-size: 13px;
+  color: var(--muted);
+}
+input[type='file']::file-selector-button {
+  font: inherit;
+  font-weight: 550;
+  height: 26px;
+  padding: 0 10px;
+  margin-right: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 5px;
+  background: var(--raised);
+  color: var(--text);
+  cursor: pointer;
 }
 input[type='checkbox'] {
   accent-color: var(--accent);
@@ -245,16 +258,14 @@ kbd {
   --border-strong: #cfcbc1;
   --text: #191816;
   --muted: #67645d;
-  --faint: #9a968c;
+  --faint: #807c72;
   --accent-text: color-mix(in oklab, var(--accent) 70%, #000);
   --tint: color-mix(in oklab, var(--accent) 13%, transparent);
   --live: #1f9a55;
   --warn: #c48410;
   --danger: #d23f4a;
   --danger-tint: color-mix(in oklab, var(--danger) 12%, transparent);
-  --shadow:
-    0 12px 40px rgb(30 24 14 / 0.13),
-    0 1px 3px rgb(30 24 14 / 0.08);
+  --shadow: 0 12px 40px rgb(30 24 14 / 0.13), 0 1px 3px rgb(30 24 14 / 0.08);
   display: flex;
   width: 100%;
   height: 100dvh;
@@ -274,15 +285,13 @@ kbd {
   --border-strong: #3a3a40;
   --text: #ecebe6;
   --muted: #a3a29c;
-  --faint: #6f6e69;
+  --faint: #85847e;
   --accent-text: color-mix(in oklab, var(--accent) 78%, #fff);
   --tint: color-mix(in oklab, var(--accent) 16%, transparent);
   --live: #4fd08a;
   --warn: #f0b84a;
   --danger: #ff6670;
-  --shadow:
-    0 16px 50px rgb(0 0 0 / 0.55),
-    0 1px 2px rgb(0 0 0 / 0.4);
+  --shadow: 0 16px 50px rgb(0 0 0 / 0.55), 0 1px 2px rgb(0 0 0 / 0.4);
   color-scheme: dark;
 }
 .app-root[data-theme='contrast'] {
@@ -438,6 +447,34 @@ kbd {
 .full {
   width: 100%;
 }
+.field-hint {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+/* Destructive actions sit apart from the form they follow. */
+.permission-note {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--raised);
+  font-size: 13px;
+  color: var(--muted);
+}
+.danger-zone {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.danger-zone > p {
+  margin-bottom: 4px;
+  font-size: 13px;
+}
 .text-button {
   display: inline-flex;
   align-items: center;
@@ -455,6 +492,21 @@ kbd {
   align-items: center;
   margin: 10px 0;
   flex-wrap: wrap;
+}
+/* Enable spans the row; record and play back sit together beneath it. */
+.inline-actions.mic-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+.inline-actions.mic-actions > :first-child {
+  grid-column: 1 / -1;
+}
+.inline-actions.mic-actions > .button[aria-busy='true'] {
+  opacity: 1;
+  background: var(--raised);
+}
+.inline-actions.mic-actions > .button {
+  justify-content: center;
 }
 .field {
   display: flex;
@@ -493,6 +545,16 @@ kbd {
 }
 .segmented button:hover {
   color: var(--text);
+}
+.full-segmented {
+  display: flex;
+  width: 100%;
+  margin-top: 4px;
+}
+.full-segmented button {
+  flex: 1;
+  padding: 6px 10px;
+  text-align: center;
 }
 .segmented button.active {
   background: var(--surface);
@@ -715,6 +777,13 @@ kbd {
   font: 600 9.5px/13px var(--font-mono);
   text-align: center;
 }
+.app-root[data-theme='dark'] .rail-badge {
+  color: var(--page);
+}
+.app-root[data-theme='contrast'] .rail-badge {
+  background: var(--text);
+  color: var(--page);
+}
 .rail-unread {
   position: absolute;
   left: -11px;
@@ -861,7 +930,7 @@ kbd {
   font: 500 10.5px/1 var(--font-mono);
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--faint);
+  color: var(--muted);
 }
 .section-label button {
   display: flex;
@@ -1286,7 +1355,7 @@ kbd {
 }
 .message-author time {
   font: 400 11px/1 var(--font-mono);
-  color: var(--faint);
+  color: var(--muted);
   font-variant-numeric: tabular-nums;
 }
 .message.grouped {
@@ -1405,7 +1474,7 @@ kbd {
 .image-attachment small {
   margin-left: auto;
   font: 400 11px/1 var(--font-mono);
-  color: var(--faint);
+  color: var(--muted);
 }
 .file-attachment {
   display: flex;
@@ -1625,11 +1694,14 @@ kbd {
 .typing-dots i:nth-child(3) {
   animation-delay: 0.3s;
 }
+.jump-anchor {
+  position: relative;
+  height: 0;
+}
 .jump-latest {
   position: absolute;
-  left: 50%;
-  bottom: 150px;
-  transform: translateX(-50%);
+  right: 20px;
+  bottom: 10px;
   z-index: 10;
   display: flex;
   align-items: center;
@@ -1726,7 +1798,7 @@ kbd {
   gap: 12px;
   padding: 6px 2px 0;
   font: 400 11px/1.4 var(--font-mono);
-  color: var(--faint);
+  color: var(--muted);
 }
 .composer-hint kbd {
   font-size: 10px;
@@ -1735,7 +1807,7 @@ kbd {
 .autocomplete {
   position: absolute;
   left: 0;
-  right: 0;
+  width: min(420px, 100%);
   bottom: calc(100% + 6px);
   z-index: 30;
   max-height: 300px;
@@ -1767,6 +1839,9 @@ kbd {
 .autocomplete small {
   flex: 1;
   color: var(--muted);
+}
+.autocomplete kbd {
+  margin-left: auto;
 }
 .composer-emoji {
   left: 8px;
@@ -1981,18 +2056,12 @@ kbd {
   font-weight: 500;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--accent-text);
+  color: var(--muted);
   white-space: nowrap;
 }
 .inbox-kind.mention {
   background: none;
   padding: 0;
-}
-.inbox-kind.reply {
-  color: var(--live);
-}
-.inbox-kind.dm {
-  color: var(--warn);
 }
 .inbox-card-top time {
   margin-left: 12px;
@@ -2043,6 +2112,10 @@ kbd {
 .inbox-footer kbd {
   margin: 0 1px;
 }
+/* The mini call sits bottom right by default; keep the hint clear of it. */
+.app-root:has(.call-pill) .inbox-footer {
+  justify-content: flex-start;
+}
 
 /* ───────────────────────── Dialogs ───────────────────────── */
 .modal-backdrop {
@@ -2055,6 +2128,11 @@ kbd {
   padding: 24px;
   background: rgb(8 8 9 / 0.55);
   animation: fade-in 0.12s ease-out;
+}
+/* Search keeps its field in place while results change height. */
+.modal-backdrop.top {
+  align-items: flex-start;
+  padding-top: 14vh;
 }
 .modal {
   width: 480px;
@@ -2228,7 +2306,7 @@ kbd {
   --border: #2e2e33;
   --text: #ecebe6;
   --muted: #a3a29c;
-  --faint: #6f6e69;
+  --faint: #85847e;
   --hover: rgb(255 255 255 / 0.06);
   --live: #4fd08a;
   --warn: #f0b84a;
@@ -2293,7 +2371,7 @@ kbd {
 }
 .pill-quality {
   font: 400 11px/1 var(--font-mono);
-  color: var(--faint);
+  color: var(--muted);
 }
 .pill-controls {
   display: flex;
@@ -2324,11 +2402,11 @@ kbd {
   color: var(--accent-text) !important;
 }
 .leave-control {
-  background: var(--danger) !important;
+  background: #d3343f !important;
   color: #fff !important;
 }
 .leave-control:hover {
-  background: color-mix(in oklab, var(--danger) 85%, #000) !important;
+  background: #b82a34 !important;
 }
 
 /* ───────────────────────── Stage (always dark) ───────────────────────── */
@@ -2341,7 +2419,7 @@ kbd {
   --border-strong: #3a3a40;
   --text: #ecebe6;
   --muted: #a3a29c;
-  --faint: #6f6e69;
+  --faint: #85847e;
   --live: #4fd08a;
   --warn: #f0b84a;
   --danger: #ff6670;
@@ -2425,13 +2503,17 @@ kbd {
   width: min(
     100cqw,
     var(--max-width),
-    calc((100cqh - 36px - (var(--rows) - 1) * var(--gap)) * 1.6 * var(--cols) / var(--rows) + (var(--cols) - 1) * var(--gap))
+    calc(
+      (100cqh - 36px - (var(--rows) - 1) * var(--gap)) * 1.6 * var(--cols) / var(--rows) + (var(--cols) - 1) *
+        var(--gap)
+    )
   );
 }
 .stage-tile {
   position: relative;
   aspect-ratio: 16 / 10;
   min-width: 0;
+  container-type: inline-size;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2439,7 +2521,11 @@ kbd {
   border-radius: 10px;
   border: 1px solid var(--border);
   background:
-    radial-gradient(circle at 50% 42%, color-mix(in oklab, var(--tile-color) 16%, transparent), transparent 62%),
+    radial-gradient(
+      circle at 50% 42%,
+      color-mix(in oklab, var(--tile-color) 16%, transparent),
+      transparent 62%
+    ),
     var(--surface);
   outline: 2px solid transparent;
   outline-offset: -2px;
@@ -2466,9 +2552,15 @@ kbd {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding-bottom: 30px;
   border-radius: inherit;
 }
+.tile-main:focus-visible {
+  outline-offset: -4px;
+}
+/* Scales with the tile so the name label never covers it on small stages. */
 .tile-main .avatar {
+  --size: clamp(32px, 30cqw, 84px) !important;
   border-radius: 26%;
 }
 .tile-label {
@@ -2533,7 +2625,7 @@ kbd {
 }
 .stage-tiles.with-share {
   width: 100%;
-  grid-template-columns: repeat(var(--cols), minmax(0, 120px));
+  grid-template-columns: repeat(var(--cols), minmax(0, 160px));
   justify-content: center;
 }
 .stage-tiles.with-share .tile-label {
@@ -2544,9 +2636,6 @@ kbd {
 }
 .stage-tiles.with-share .tile-label strong {
   font-size: 11.5px;
-}
-.stage-tiles.with-share .tile-volume {
-  display: none;
 }
 .screen-share-header {
   flex-shrink: 0;
@@ -2566,7 +2655,7 @@ kbd {
 }
 .screen-share-header > span .muted {
   font: 400 11px/1 var(--font-mono);
-  color: var(--faint);
+  color: var(--muted);
   margin-left: 4px;
 }
 .share-tools button {
@@ -2810,27 +2899,20 @@ button.dock-chip:hover {
   position: absolute;
   top: 12px;
   left: 14px;
-  font: 400 11px/1 var(--font-mono);
-  color: var(--faint);
+  font: 400 11px/1.5 var(--font-mono);
+  color: var(--muted);
 }
 .hearing-range {
   position: absolute;
   z-index: -1;
-  height: 92%;
-  aspect-ratio: 1;
+  /* The audible radius is 260 of the 800×500 lounge units, so it is an ellipse on screen. */
+  width: 65%;
+  height: 104%;
   transform: translate(-50%, -50%);
   border-radius: 50%;
   border: 1px dashed color-mix(in oklab, var(--accent) 55%, transparent);
   background: radial-gradient(closest-side, color-mix(in oklab, var(--accent) 10%, transparent), transparent);
   pointer-events: none;
-}
-.hearing-range > span {
-  position: absolute;
-  left: 50%;
-  bottom: 6px;
-  transform: translateX(-50%);
-  font: 400 10.5px/1 var(--font-mono);
-  color: var(--accent-text);
 }
 .lounge-person,
 .lounge-self {
@@ -2954,7 +3036,7 @@ button.dock-chip:hover {
   font: 500 10.5px/1 var(--font-mono);
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--faint);
+  color: var(--muted);
 }
 .theme-options {
   display: grid;
@@ -3238,7 +3320,7 @@ button.dock-chip:hover {
   padding: 0 0 8px;
   border-bottom: 2px solid var(--border);
   font-size: 12.5px;
-  color: var(--faint);
+  color: var(--muted);
   white-space: nowrap;
 }
 .wizard-progress button > span {
@@ -3267,7 +3349,7 @@ button.dock-chip:hover {
 }
 .wizard-footer > span {
   font: 400 11px/1 var(--font-mono);
-  color: var(--faint);
+  color: var(--muted);
 }
 .mic-meter {
   display: flex;
@@ -3306,7 +3388,7 @@ button.dock-chip:hover {
 .auth-story {
   --text: #ecebe6;
   --muted: #a3a29c;
-  --faint: #6f6e69;
+  --faint: #85847e;
   width: 44%;
   max-width: 620px;
   flex-shrink: 0;
@@ -3331,6 +3413,11 @@ button.dock-chip:hover {
 .auth-brand img {
   width: 30px;
   height: 30px;
+}
+/* Shown on the form side only when the story panel is hidden. */
+.auth-brand-compact {
+  display: none;
+  margin-bottom: 28px;
 }
 .auth-pitch h1 {
   max-width: 460px;
@@ -3362,7 +3449,7 @@ button.dock-chip:hover {
   font: 500 11px/1.8 var(--font-mono);
   letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: #8a8983;
 }
 .auth-meter {
   display: flex;
@@ -3685,8 +3772,25 @@ button.dock-chip:hover {
   }
 }
 @media (max-width: 760px) {
+  /* The rail slides in with the rooms drawer so messages get the full width. */
   .space-rail {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 61;
     width: 54px;
+    transform: translateX(-100%);
+    transition: transform 0.2s;
+  }
+  .space-rail.mobile-open {
+    transform: translateX(0);
+  }
+  .mobile-scrim {
+    position: absolute;
+    inset: 0;
+    z-index: 59;
+    background: rgb(0 0 0 / 0.4);
   }
   .space-icon,
   .rail-add {
@@ -3760,6 +3864,9 @@ button.dock-chip:hover {
   .settings-view {
     padding: 14px;
   }
+  .inbox-footer {
+    display: none;
+  }
   .inbox-card-actions {
     padding-left: 0;
   }
@@ -3793,18 +3900,38 @@ button.dock-chip:hover {
     order: 2;
   }
   .stage-controls button {
-    width: 38px;
-    height: 38px;
+    width: 44px;
+    height: 44px;
   }
   .stage-controls .leave-control span {
     display: none;
   }
   .stage-controls .leave-control {
-    width: 38px;
+    width: 44px;
     padding: 0;
+  }
+  .pill-controls button {
+    height: 44px;
+  }
+  .right-panel {
+    width: 100%;
   }
   .stage-tiles.with-share {
     grid-template-columns: repeat(var(--cols), minmax(0, 120px));
+  }
+  /* Portrait phones have height to spare; square tiles use it. */
+  .stage-tiles:not(.with-share) {
+    width: min(
+      100cqw,
+      var(--max-width),
+      calc(
+        (100cqh - 36px - (var(--rows) - 1) * var(--gap)) * var(--cols) / var(--rows) + (var(--cols) - 1) *
+          var(--gap)
+      )
+    );
+  }
+  .stage-tiles:not(.with-share) .stage-tile {
+    aspect-ratio: 1;
   }
   .screen-share-header > span .muted {
     display: none;
@@ -3835,6 +3962,9 @@ button.dock-chip:hover {
   }
   .auth-story {
     display: none;
+  }
+  .auth-brand-compact {
+    display: flex;
   }
   .auth-form-side {
     padding: 28px 20px;

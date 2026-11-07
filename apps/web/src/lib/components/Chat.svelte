@@ -185,7 +185,9 @@
         ><Icon name="headphones" size={14} />Join</button
       >
     </div>{/if}
-  {#if isDemo && messages.length}<div class="pinned-strip">
+  {#if isDemo && messages.some((m) => m.attachments.some((a) => a.id === 'direction'))}<div
+      class="pinned-strip"
+    >
       <Icon name="pin" size={13} /><span>Pinned</span><button
         onclick={() =>
           onThread(
@@ -246,12 +248,14 @@
         <p>Send the first one below.</p>
       </div>{/if}
   </div>
-  {#if !atBottom}<button class="jump-latest" onclick={latest}
-      >{newCount ? `${newCount} new message${newCount > 1 ? 's' : ''}` : 'Jump to latest'}<Icon
-        name="arrowDown"
-        size={15}
-      /></button
-    >{/if}
+  {#if !atBottom}<div class="jump-anchor">
+      <button class="jump-latest" onclick={latest}
+        >{newCount ? `${newCount} new message${newCount > 1 ? 's' : ''}` : 'Jump to latest'}<Icon
+          name="arrowDown"
+          size={15}
+        /></button
+      >
+    </div>{/if}
   <div class="sr-only" role="status" aria-live="polite" aria-atomic="true">
     {newCount ? `${newCount} new messages in ${room.name}` : ''}
   </div>
@@ -261,5 +265,5 @@
       >
       {typing.data.length === 1 ? 'is' : 'are'} typing…{/if}
   </div>
-  <Composer room={room._id} name={room.name} {space} onSent={latest} {command} />
+  <Composer room={room._id} name={room.name} dm={room.kind === 'dm'} {space} onSent={latest} {command} />
 </div>

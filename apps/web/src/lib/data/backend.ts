@@ -236,6 +236,7 @@ export class MockBackend {
             ...s.rooms[0],
             _id: `dm-${a.user}`,
             name: p.name,
+            topic: '',
             space: undefined,
             kind: 'dm',
             voice: [],

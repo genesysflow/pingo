@@ -40,25 +40,28 @@
         ><option value="voice">Voice · clear conversation</option><option value="studio"
           >Studio · stereo music, no microphone processing</option
         ></select
-      ></label
+      ><small class="field-hint">Applies the next time you join the call.</small></label
     >
     <label class="field">Position<input type="number" bind:value={position} required /></label>
-    <p class="muted tiny">Audio profile changes apply when you next join the call.</p>
-    <button class="button primary">Save room</button>
+    <button class="button primary full">Save room</button>
   </form>
-  {#if confirm}<p>Delete this room and its conversations?</p>
-    <button
-      class="button danger"
-      onclick={async () => {
-        try {
-          await remove({ room });
-          removed();
-          close();
-        } catch (e) {
-          error = errorMessage(e);
-        }
-      }}>Delete room</button
-    ><button class="text-button" onclick={() => (confirm = false)}>Keep room</button>
-  {:else}<button class="text-button" onclick={() => (confirm = true)}>Delete this room</button>{/if}
+  <div class="danger-zone">
+    {#if confirm}<p>Delete this room and its conversations?</p>
+      <div class="inline-actions">
+        <button
+          class="button danger"
+          onclick={async () => {
+            try {
+              await remove({ room });
+              removed();
+              close();
+            } catch (e) {
+              error = errorMessage(e);
+            }
+          }}>Delete room</button
+        ><button class="button" onclick={() => (confirm = false)}>Keep room</button>
+      </div>
+    {:else}<button class="button small danger" onclick={() => (confirm = true)}>Delete this room</button>{/if}
+  </div>
   {#if error}<p class="error" role="alert">{error}</p>{/if}
 </Modal>

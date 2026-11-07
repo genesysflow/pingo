@@ -23,9 +23,7 @@
     mfaToken = $state('');
   let providers = $state<AuthProviders | null>(null);
   // An invite-only server still lets people sign up, but only through an invite link.
-  const inviteOnly = $derived(
-    access.data?.registration === 'invite' && !access.data.setup && !inviteCode,
-  );
+  const inviteOnly = $derived(access.data?.registration === 'invite' && !access.data.setup && !inviteCode);
   const canSignUp = $derived(!!providers?.signups && !inviteOnly);
   onMount(() => {
     void auth
@@ -105,6 +103,7 @@
   <AuthStory />
   <main class="auth-form-side">
     <div class="auth-form">
+      <a class="auth-brand auth-brand-compact" href="/"><img src="/pingo.svg" alt="" />Pingo</a>
       {#if inviteCode && preview.data === null}<h2>This invite has expired</h2>
         <p class="settings-description">Ask whoever sent it for a new link.</p>
         <button
@@ -237,8 +236,8 @@
             >
           </p>
         {/if}{#if isDemo}<p class="demo-note">
-            Local demo: use any email and a password of 6+ characters. OAuth buttons simulate sign-in; no email
-            is sent.
+            Local demo: use any email and a password of 8+ characters. OAuth buttons simulate sign-in; no
+            email is sent.
           </p>{/if}{/if}
       {#if nativeDesktop}<p class="auth-server">
           <span>Server</span><code title={serverOrigin()}>{new URL(serverOrigin()).host}</code><button
