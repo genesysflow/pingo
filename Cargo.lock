@@ -6100,9 +6100,9 @@ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
 name = "rxferrix"
-version = "0.10.2"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3a6b69656e9fe8fe3aaa1b577973517ee06356d14cff2932b480c836b252f65"
+checksum = "6320abd7bbad572a8db9f2e42fd288a8cead638b7e8a0dcee38fecd53b1c0537"
 dependencies = [
  "anyhow",
  "argon2",
@@ -6156,9 +6156,9 @@ dependencies = [
 
 [[package]]
 name = "rxferrix-macros"
-version = "0.10.2"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2e73881356d479ecc0d66b3fc3aaad0d44cfdfc9db84fce8f1bc3fcc1071892e"
+checksum = "60ae5761a57bec0d5bfe680fab162a0b0bfb77aa18da6bd97062eb9729b4d7d3"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",
