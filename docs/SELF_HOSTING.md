@@ -87,7 +87,15 @@ The first start also prints a one-time link to create a dashboard administrator:
 
 ```sh
 docker compose logs pingo | grep -A2 "No administrator"
-# or: docker compose exec pingo pingo-server admin create you@example.com
+```
+
+The `admin` commands (`create`, `reset-password`, `disable-2fa`) refuse a data directory a running server is
+using, so stop Pingo first:
+
+```sh
+docker compose stop pingo
+docker compose run --rm pingo admin create you@example.com --dir /data
+docker compose start pingo
 ```
 
 The dashboard (`/_/`) shows data, logs and settings, and lets you change Environment variables at run time.
