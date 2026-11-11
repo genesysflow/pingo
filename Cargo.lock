@@ -3729,9 +3729,9 @@ dependencies = [
 
 [[package]]
 name = "libsqlite3-sys"
-version = "0.38.2"
+version = "0.39.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f1d20bef17f513b9b3004532233187769cd072d790971f4e4da0e346eb6401e8"
+checksum = "14a5f01b87b92705d07b433c06f96cbc764637d81a0bffb5734ce17cf0f9a2b3"
 dependencies = [
  "cc",
  "pkg-config",
@@ -5865,9 +5865,9 @@ dependencies = [
 
 [[package]]
 name = "rusqlite"
-version = "0.40.2"
+version = "0.41.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23f2a97da3e3873c73cb2a2e71b35c40ff95e0b1eefa8d72d8499a6928c3b5b3"
+checksum = "da9bba6f3506135e120a6586df05be18b48d18896600646a4bec8f993d91a594"
 dependencies = [
  "bitflags 2.13.2",
  "fallible-iterator",
@@ -6100,9 +6100,9 @@ checksum = "cf54715a573b99ac80df0bc206da022bcd442c974952c7b9720069370852e21f"
 
 [[package]]
 name = "rxferrix"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6320abd7bbad572a8db9f2e42fd288a8cead638b7e8a0dcee38fecd53b1c0537"
+checksum = "c1bd9a86417f654f8f9726235523a0013705e61317d92f3f568b0b10e21326cb"
 dependencies = [
  "anyhow",
  "argon2",
@@ -6156,9 +6156,9 @@ dependencies = [
 
 [[package]]
 name = "rxferrix-macros"
-version = "0.12.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60ae5761a57bec0d5bfe680fab162a0b0bfb77aa18da6bd97062eb9729b4d7d3"
+checksum = "34131ab14dcd1ab03afacaef7ebd22a90da28cfa684f48318c0adc2f2ca1ae9d"
 dependencies = [
  "heck 0.5.0",
  "proc-macro2",

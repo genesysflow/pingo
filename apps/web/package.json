@@ -14,8 +14,8 @@
   "dependencies": {
     "@mediapipe/tasks-vision": "0.10.32",
     "@lucide/svelte": "^1.61.0",
-    "@rxferrix/client": "0.12.0",
-    "@rxferrix/svelte": "0.12.0",
+    "@rxferrix/client": "0.13.0",
+    "@rxferrix/svelte": "0.13.0",
     "@tauri-apps/api": "^2",
     "dompurify": "^3.2.6",
     "marked": "^15.0.12",
