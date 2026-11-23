@@ -53,6 +53,8 @@ impl Server {
     pub async fn start() -> Self {
         let app = TestApp::with_options(rxferrix::AppOptions {
             dev: true,
+            // A temporary directory: waiting for the disk would only slow the tests down.
+            fsync_commits: false,
             ..Default::default()
         })
         .await
