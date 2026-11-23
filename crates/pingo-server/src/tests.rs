@@ -21,6 +21,8 @@ fn app_options(dev: bool) -> AppOptions {
             .redirect_url("http://localhost:5173")
             .before_sign_up(crate::access::before_sign_up),
         guard: Some(Guard::new(crate::access::guard)),
+        // A temporary directory: waiting for the disk would only slow the tests down.
+        fsync_commits: false,
         ..Default::default()
     }
 }

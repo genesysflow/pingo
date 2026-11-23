@@ -43,6 +43,8 @@ impl Server {
         let t = TestApp::with_options(rxferrix::AppOptions {
             dev,
             guard: Some(rxferrix::Guard::new(crate::access::guard)),
+            // A temporary directory: waiting for the disk would only slow the tests down.
+            fsync_commits: false,
             ..Default::default()
         })
         .await
